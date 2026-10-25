@@ -2,5 +2,7 @@
   "name": "rave reh — Совместный просмотр YouTube и VK Видео",
   "description": "Синхронный совместный просмотр видео YouTube и VK Видео в реальном времени с чатом, реакциями, аккаунтами и детальной статистикой времени.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }
