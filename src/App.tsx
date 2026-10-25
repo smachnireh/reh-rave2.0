@@ -63,10 +63,10 @@ export default function App() {
   const [joinCodeInput, setJoinCodeInput] = useState<string>('');
   const [createdBoxCode, setCreatedBoxCode] = useState<string | null>(null);
 
-  // Video State
-  const [currentVideoId, setCurrentVideoId] = useState<string>('dQw4w9WgXcQ');
-  const [vkOid, setVkOid] = useState<string>('-22822305');
-  const [vkId, setVkId] = useState<string>('456241984');
+  // Video State (starts empty, without automatic Rickroll or VK clip)
+  const [currentVideoId, setCurrentVideoId] = useState<string>('');
+  const [vkOid, setVkOid] = useState<string>('');
+  const [vkId, setVkId] = useState<string>('');
   const [vkHash, setVkHash] = useState<string | undefined>(undefined);
   const [videoInputUrl, setVideoInputUrl] = useState<string>('');
 
@@ -344,14 +344,11 @@ export default function App() {
       setOnlineCount(1);
       incrementStat(currentUser.id, 'sessionsCount', 1);
 
-      // Default video setup
-      if (platform === 'vk') {
-        setCurrentVideoId('-22822305_456241984');
-        setVkOid('-22822305');
-        setVkId('456241984');
-      } else {
-        setCurrentVideoId('dQw4w9WgXcQ');
-      }
+      // Start with empty video so user can choose cleanly
+      setCurrentVideoId('');
+      setVkOid('');
+      setVkId('');
+      setVkHash(undefined);
 
       peer.on('connection', (conn) => {
         // @ts-ignore
@@ -896,6 +893,7 @@ export default function App() {
                   isHost={isHost}
                   onSyncAction={handleSyncAction}
                   incomingSync={incomingSync}
+                  onSelectPreset={handleLoadVideo}
                 />
 
                 {/* Floating flying emoji particles container */}

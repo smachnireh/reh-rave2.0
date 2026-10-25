@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { VideoPlatform } from '../types';
-import { PlayCircle, Tv } from 'lucide-react';
+import { PlayCircle, Tv, Film, Music, Compass, Sparkles } from 'lucide-react';
 
 declare global {
   interface Window {
@@ -18,6 +18,7 @@ interface VideoPlayerProps {
   isHost: boolean;
   onSyncAction: (action: 'play' | 'pause' | 'seek', time: number) => void;
   incomingSync: { action: 'play' | 'pause' | 'seek'; time: number; timestamp: number } | null;
+  onSelectPreset?: (url: string) => void;
 }
 
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({
@@ -28,6 +29,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   vkHash,
   onSyncAction,
   incomingSync,
+  onSelectPreset,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const ytPlayerRef = useRef<any>(null);
@@ -35,9 +37,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const isIncomingSyncRef = useRef<boolean>(false);
   const lastTimeRef = useRef<number>(0);
 
-  // 1. YouTube Player Initializer
+  // 1. YouTube Player Initializer (only when videoId is present)
   useEffect(() => {
-    if (platform !== 'youtube') return;
+    if (platform !== 'youtube' || !videoId) return;
 
     let destroyed = false;
 
@@ -56,9 +58,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         ytPlayerRef.current = new window.YT.Player('yt-player-target', {
           height: '100%',
           width: '100%',
-          videoId: videoId || 'dQw4w9WgXcQ',
+          videoId: videoId,
           playerVars: {
-            autoplay: 0,
+            autoplay: 1,
             playsinline: 1,
             rel: 0,
             controls: 1,
@@ -135,7 +137,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   // When YouTube videoId changes, cue/load it
   useEffect(() => {
-    if (platform === 'youtube' && ytPlayerRef.current && typeof ytPlayerRef.current.loadVideoById === 'function') {
+    if (platform === 'youtube' && videoId && ytPlayerRef.current && typeof ytPlayerRef.current.loadVideoById === 'function') {
       isIncomingSyncRef.current = true;
       ytPlayerRef.current.loadVideoById(videoId, 0);
       setTimeout(() => {
@@ -144,9 +146,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   }, [videoId, platform]);
 
-  // 2. VK Video Native postMessage Listener (Автоматическая синхронизация при клике паузы/пуска в VK)
+  // 2. VK Video Native postMessage Listener
   useEffect(() => {
-    if (platform !== 'vk') return;
+    if (platform !== 'vk' || !videoId) return;
 
     const handleWindowMessage = (event: MessageEvent) => {
       if (isIncomingSyncRef.current) return;
@@ -160,8 +162,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         }
         if (!data) return;
 
-        // VK Video player postMessage events:
-        // "started", "resumed", "paused", "ended", "timeupdate", "seeked"
         const eventType = data.event || data.action || data.type;
         const time = Number(data.time || data.currentTime || 0);
 
@@ -179,11 +179,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     return () => {
       window.removeEventListener('message', handleWindowMessage);
     };
-  }, [platform, onSyncAction]);
+  }, [platform, videoId, onSyncAction]);
 
   // 3. Handle incoming sync packets from peer (YouTube and VK Video)
   useEffect(() => {
-    if (!incomingSync) return;
+    if (!incomingSync || !videoId) return;
     const { action, time } = incomingSync;
     isIncomingSyncRef.current = true;
 
@@ -220,7 +220,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     setTimeout(() => {
       isIncomingSyncRef.current = false;
     }, 800);
-  }, [incomingSync, platform]);
+  }, [incomingSync, platform, videoId]);
 
   // Build VK Embed URL with js_api=1
   const getVkUrl = () => {
@@ -236,7 +236,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         id = '456241984';
       }
     }
-    let url = `https://vk.com/video_ext.php?oid=${oid}&id=${id}&hd=2&autoplay=0&js_api=1`;
+    let url = `https://vk.com/video_ext.php?oid=${oid}&id=${id}&hd=2&autoplay=1&js_api=1`;
     if (vkHash) {
       url += `&hash=${vkHash}`;
     }
@@ -260,9 +260,96 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         )}
       </div>
 
-      {/* Video Viewport */}
+      {/* Video Viewport OR Empty State Poster */}
       <div className="w-full h-full relative" ref={containerRef}>
-        {platform === 'youtube' ? (
+        {!videoId ? (
+          /* PLEASANT EMPTY STATE POSTER CARD */
+          <div className="w-full h-full flex flex-col items-center justify-center text-center p-6 bg-gradient-to-br from-neutral-950 via-[#0d0d0d] to-neutral-900 relative overflow-hidden select-none">
+            {/* Glowing orb accent */}
+            <div
+              className={`absolute w-72 h-72 rounded-full blur-[90px] opacity-20 pointer-events-none ${
+                platform === 'youtube' ? 'bg-red-500' : 'bg-blue-500'
+              }`}
+            />
+
+            <div className="relative z-10 max-w-md flex flex-col items-center">
+              <div
+                className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-3.5 shadow-2xl border ${
+                  platform === 'youtube'
+                    ? 'bg-red-600/15 border-red-500/30 text-red-500'
+                    : 'bg-blue-600/15 border-blue-500/30 text-blue-400'
+                }`}
+              >
+                {platform === 'youtube' ? <PlayCircle className="w-8 h-8" /> : <Tv className="w-8 h-8" />}
+              </div>
+
+              <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight mb-1.5">
+                {platform === 'youtube' ? 'Комната YouTube создана!' : 'Комната VK Видео создана!'}
+              </h2>
+
+              <p className="text-xs sm:text-sm text-neutral-400 mb-6 max-w-sm leading-relaxed">
+                Вставьте ссылку на видео или Shorts в поле ниже, либо запустите любой готовый вариант в один клик:
+              </p>
+
+              {/* Clickable Quick Presets */}
+              <div className="grid grid-cols-2 gap-2.5 w-full max-w-xs">
+                {platform === 'youtube' ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => onSelectPreset?.('https://www.youtube.com/watch?v=jfKfPfyJRdk')}
+                      className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-left transition-all hover:scale-102 cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-white group-hover:text-amber-300">
+                        <Music className="w-3.5 h-3.5 text-red-400" />
+                        <span>Lofi Beats</span>
+                      </div>
+                      <div className="text-[10px] text-neutral-400 mt-0.5">Фоновая музыка</div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => onSelectPreset?.('https://www.youtube.com/watch?v=4xDzrJKXOOY')}
+                      className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-left transition-all hover:scale-102 cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-white group-hover:text-amber-300">
+                        <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                        <span>Synthwave</span>
+                      </div>
+                      <div className="text-[10px] text-neutral-400 mt-0.5">Ретро чиллаут</div>
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => onSelectPreset?.('https://vk.com/video-22822305_456241984')}
+                      className="p-2.5 rounded-xl bg-blue-950/30 hover:bg-blue-900/40 border border-blue-500/20 text-left transition-all hover:scale-102 cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-white group-hover:text-blue-300">
+                        <Film className="w-3.5 h-3.5 text-blue-400" />
+                        <span>VK Шоу</span>
+                      </div>
+                      <div className="text-[10px] text-neutral-400 mt-0.5">Шоу & Трейлеры</div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => onSelectPreset?.('https://vk.com/video-28363549_456239106')}
+                      className="p-2.5 rounded-xl bg-blue-950/30 hover:bg-blue-900/40 border border-blue-500/20 text-left transition-all hover:scale-102 cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-white group-hover:text-blue-300">
+                        <Music className="w-3.5 h-3.5 text-blue-400" />
+                        <span>VK Клип</span>
+                      </div>
+                      <div className="text-[10px] text-neutral-400 mt-0.5">Популярный клип</div>
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : platform === 'youtube' ? (
           <div id="yt-player-target" className="w-full h-full" />
         ) : (
           <div className="w-full h-full relative bg-neutral-950 flex flex-col">
