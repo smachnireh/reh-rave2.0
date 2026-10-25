@@ -1,1 +1,1 @@
-[![Запустить онлайн](https://img.shields.io/badge/🚀_Запустить_онлайн-Live_Demo-black?style=for-the-badge&logo=googlechrome&logoColor=white)](https://ais-pre-iluypvj2ba2pfhh5bucig4-886551301332.asia-southeast1.run.app)
+[![Запустить онлайн](https://img.shields.io/badge/🚀_Запустить_онлайн-Live_Demo-black?style=for-the-badge&logo=googlechrome&logoColor=white)]([https://ais-pre-iluypvj2ba2pfhh5bucig4-886551301332.asia-southeast1.run.app](https://smachnireh.github.io/reh-rave2.0/))
