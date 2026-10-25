@@ -244,7 +244,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   };
 
   return (
-    <div className="relative w-full aspect-video bg-black rounded-xl overflow-hidden border border-white/10 shadow-2xl flex flex-col group">
+    <div className="relative w-full h-full min-h-[260px] aspect-video lg:aspect-auto bg-black rounded-xl overflow-hidden border border-white/10 shadow-2xl flex flex-col group">
       {/* Active Platform watermark */}
       <div className="absolute top-3 right-3 z-20 pointer-events-none flex items-center gap-1.5 bg-black/60 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10 text-[11px] font-semibold text-neutral-300">
         {platform === 'youtube' ? (

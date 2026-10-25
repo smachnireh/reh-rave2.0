@@ -19,6 +19,7 @@ import { VideoPlayer } from './components/VideoPlayer';
 import { AuthModal } from './components/AuthModal';
 import { ProfileModal } from './components/ProfileModal';
 import { StatsModal } from './components/StatsModal';
+import { ChatWindow } from './components/ChatWindow';
 import {
   PlayCircle,
   Tv,
@@ -516,11 +517,7 @@ export default function App() {
   };
 
   // Send Chat message
-  const handleSendMessage = (e: React.FormEvent) => {
-    e.preventDefault();
-    const text = chatInput.trim();
-    if (!text) return;
-
+  const handleSendMessage = (text: string) => {
     const timestamp = Date.now();
     const newMsg: ChatMessage = {
       id: 'msg_' + timestamp + '_' + Math.random().toString(36).substring(2, 5),
@@ -533,7 +530,6 @@ export default function App() {
     };
 
     setChatMessages((prev) => [...prev, newMsg]);
-    setChatInput('');
     incrementStat(currentUser.id, 'messagesCount', 1);
 
     broadcastPacket({
@@ -548,15 +544,10 @@ export default function App() {
     });
   };
 
-  // Scroll chat down on new message
-  useEffect(() => {
-    chatMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatMessages]);
-
   const totalWatchTime = (currentUser.stats.youtubeTimeSeconds || 0) + (currentUser.stats.vkTimeSeconds || 0);
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#0a0a0a] text-[#e0e0e0] font-sans relative selection:bg-white/20">
+    <div className={`flex flex-col bg-[#0a0a0a] text-[#e0e0e0] font-sans relative selection:bg-white/20 ${currentView === 'room' ? 'h-screen lg:overflow-hidden overflow-y-auto' : 'min-h-screen'}`}>
       {/* Dynamic Ambient Background Glow Orbs */}
       <div
         className="fixed -top-32 -right-32 w-[600px] h-[600px] rounded-full blur-[140px] pointer-events-none opacity-20 transition-all duration-1000 z-0"
@@ -586,7 +577,7 @@ export default function App() {
       </div>
 
       {/* TOP HEADER */}
-      <header className="h-14 border-b border-white/10 bg-[#111111]/80 backdrop-blur-xl px-4 sm:px-6 flex items-center justify-between sticky top-0 z-30">
+      <header className="h-14 border-b border-white/10 bg-[#111111]/80 backdrop-blur-xl px-4 sm:px-6 flex items-center justify-between sticky top-0 z-30 shrink-0">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <span className="font-extrabold tracking-tight text-lg text-white">rave reh</span>
@@ -669,7 +660,7 @@ export default function App() {
       </header>
 
       {/* MAIN CONTENT AREA */}
-      <main className="flex-1 flex flex-col max-w-[1440px] w-full mx-auto p-3 sm:p-5 z-10">
+      <main className={`flex-1 flex flex-col max-w-[1440px] w-full mx-auto p-3 sm:p-5 z-10 ${currentView === 'room' ? 'h-[calc(100vh-3.5rem)] lg:overflow-hidden' : ''}`}>
         {/* VIEW 1: MAIN MENU */}
         {currentView === 'menu' && (
           <div className="flex-1 flex flex-col items-center justify-center py-6">
@@ -838,11 +829,11 @@ export default function App() {
 
         {/* VIEW 2: ROOM VIEW */}
         {currentView === 'room' && (
-          <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4 h-full min-h-[500px]">
+          <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_350px] gap-4 sm:gap-6 h-full min-h-0 lg:overflow-hidden">
             {/* Left: Video Player & Controls */}
-            <div className="flex flex-col gap-3 min-w-0">
+            <div className="flex flex-col gap-3 min-w-0 h-full lg:overflow-hidden">
               {/* Room Topbar */}
-              <div className="bg-[#111111]/90 border border-white/10 rounded-xl p-3 sm:px-4 flex items-center justify-between flex-wrap gap-2">
+              <div className="bg-[#111111]/90 border border-white/10 rounded-xl p-3 sm:px-4 flex items-center justify-between flex-wrap gap-2 shrink-0">
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-2">
                     <span className="text-[11px] uppercase tracking-wider text-neutral-400 font-bold">
@@ -895,7 +886,7 @@ export default function App() {
               </div>
 
               {/* Video Player Box with Floating Emoji Overlay */}
-              <div className="relative">
+              <div className="relative flex-1 min-h-[260px] lg:min-h-0 overflow-hidden">
                 <VideoPlayer
                   platform={roomPlatform}
                   videoId={currentVideoId}
@@ -986,116 +977,24 @@ export default function App() {
               </div>
             </div>
 
-            {/* Right: Sidebar Chat & Emoji Bar */}
-            <div className="bg-[#111111]/80 backdrop-blur-xl border border-white/10 rounded-2xl flex flex-col h-[520px] lg:h-auto overflow-hidden shadow-2xl">
-              {/* Sidebar Header */}
-              <div className="p-3.5 border-b border-white/10 bg-white/[0.02] flex items-center justify-between">
-                <div className="text-xs font-bold text-neutral-300 uppercase tracking-wider flex items-center gap-1.5">
-                  Чат комнаты
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                    {onlineCount} онлайн
-                  </span>
-                </div>
-              </div>
-
-              {/* Chat Message List */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-3.5">
-                {chatMessages.length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center text-center text-neutral-500 text-xs px-4">
-                    <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-neutral-400 mb-2">
-                      💬
-                    </div>
-                    Здесь пока тихо. Напишите первое сообщение или отправьте реакцию!
-                  </div>
-                ) : (
-                  chatMessages.map((msg) => (
-                    <div
-                      key={msg.id}
-                      className={`flex items-end gap-2.5 ${msg.isSelf ? 'flex-row-reverse self-end' : 'flex-row self-start'}`}
-                    >
-                      {/* Avatar with optional Host Crown */}
-                      <div className="relative shrink-0">
-                        {msg.isHost && (
-                          <Crown className="w-3.5 h-3.5 text-amber-400 absolute -top-3 left-1/2 -translate-x-1/2 drop-shadow-[0_0_4px_rgba(251,191,36,0.6)]" />
-                        )}
-                        <div
-                          className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white overflow-hidden border border-white/15"
-                          style={{
-                            background: msg.avatar
-                              ? `url('${msg.avatar}') center/cover`
-                              : getColorsForString(msg.sender),
-                          }}
-                        >
-                          {!msg.avatar && msg.sender.charAt(0).toUpperCase()}
-                        </div>
-                      </div>
-
-                      {/* Content Box */}
-                      <div className={`flex flex-col gap-0.5 max-w-[80%] ${msg.isSelf ? 'items-end' : 'items-start'}`}>
-                        <div className="text-[10px] text-neutral-400 font-semibold px-1">
-                          {msg.isSelf ? 'Вы' : msg.sender} •{' '}
-                          {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </div>
-                        <div
-                          className={`px-3 py-2 rounded-2xl text-xs sm:text-sm leading-relaxed break-words shadow-sm ${
-                            msg.isSelf
-                              ? 'bg-white/15 text-white border border-white/10 rounded-br-xs'
-                              : 'bg-neutral-800 text-neutral-100 border border-white/5 rounded-bl-xs'
-                          }`}
-                        >
-                          {msg.text}
-                        </div>
-                      </div>
-                    </div>
-                  ))
-                )}
-                <div ref={chatMessagesEndRef} />
-              </div>
-
-              {/* Emoji Reaction Bar */}
-              <div className="flex items-center justify-around px-2 py-1.5 bg-black/40 border-t border-b border-white/5">
-                {['👍', '😂', '❤️', '🔥', '🎉', '😮', '😢'].map((emoji) => (
-                  <button
-                    key={emoji}
-                    type="button"
-                    onClick={() => handleSendEmoji(emoji)}
-                    className="p-1 hover:scale-130 active:scale-95 transition-transform text-lg cursor-pointer"
-                    title={`Отправить реакцию ${emoji}`}
-                  >
-                    {emoji}
-                  </button>
-                ))}
-              </div>
-
-              {/* Chat Input Form */}
-              <form onSubmit={handleSendMessage} className="p-3 bg-white/[0.02] flex gap-2">
-                <input
-                  type="text"
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  placeholder="Напишите сообщение..."
-                  className="flex-1 bg-[#181818] border border-white/10 focus:border-white/30 rounded-xl px-3 py-2 text-xs sm:text-sm text-white outline-none transition-colors"
-                />
-                <button
-                  type="submit"
-                  className="p-2.5 rounded-xl bg-white text-black hover:bg-neutral-200 font-bold transition-colors cursor-pointer shrink-0"
-                  title="Отправить"
-                >
-                  <Send className="w-4 h-4" />
-                </button>
-              </form>
-            </div>
+            {/* Right: Separate Chat Window */}
+            <ChatWindow
+              messages={chatMessages}
+              onlineCount={onlineCount}
+              currentUser={currentUser}
+              onSendMessage={handleSendMessage}
+              onSendEmoji={handleSendEmoji}
+            />
           </div>
         )}
       </main>
 
       {/* FOOTER */}
-      <footer className="py-2.5 px-4 text-center text-[11px] text-neutral-500 border-t border-white/5">
-        rave reh • Синхронный плеер YouTube & VK Видео • Локальное сохранение аккаунтов без серверов
-      </footer>
+      {currentView !== 'room' && (
+        <footer className="py-2.5 px-4 text-center text-[11px] text-neutral-500 border-t border-white/5 shrink-0">
+          rave reh • Синхронный плеер YouTube & VK Видео • Локальное сохранение аккаунтов без серверов
+        </footer>
+      )}
 
       {/* MODALS */}
       <AuthModal
