@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { VideoPlatform } from '../types';
-import { PlayCircle, Tv, ExternalLink, Play, Pause, RotateCcw } from 'lucide-react';
+import { PlayCircle, Tv } from 'lucide-react';
 
 declare global {
   interface Window {
@@ -26,7 +26,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   vkOid,
   vkId,
   vkHash,
-  isHost,
   onSyncAction,
   incomingSync,
 }) => {
@@ -35,8 +34,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const vkIframeRef = useRef<HTMLIFrameElement>(null);
   const isIncomingSyncRef = useRef<boolean>(false);
   const lastTimeRef = useRef<number>(0);
-  const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [currentTime, setCurrentTime] = useState<number>(0);
 
   // 1. YouTube Player Initializer
   useEffect(() => {
@@ -47,7 +44,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const initYT = () => {
       if (destroyed || !window.YT || !window.YT.Player) return;
 
-      // Clear existing content
       const targetDiv = document.getElementById('yt-player-target');
       if (!targetDiv) return;
 
@@ -80,10 +76,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
               const curr = player.getCurrentTime();
               if (event.data === window.YT.PlayerState.PLAYING) {
-                setIsPlaying(true);
                 onSyncAction('play', curr);
               } else if (event.data === window.YT.PlayerState.PAUSED) {
-                setIsPlaying(false);
                 onSyncAction('pause', curr);
               }
             },
@@ -114,7 +108,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
       const state = player.getPlayerState();
       const curr = player.getCurrentTime();
-      setCurrentTime(curr);
 
       if (state === window.YT?.PlayerState?.PLAYING) {
         const drift = Math.abs(curr - (lastTimeRef.current + 0.5));
@@ -151,7 +144,44 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   }, [videoId, platform]);
 
-  // Handle incoming sync packets
+  // 2. VK Video Native postMessage Listener (Автоматическая синхронизация при клике паузы/пуска в VK)
+  useEffect(() => {
+    if (platform !== 'vk') return;
+
+    const handleWindowMessage = (event: MessageEvent) => {
+      if (isIncomingSyncRef.current) return;
+
+      try {
+        let data = event.data;
+        if (typeof data === 'string') {
+          try {
+            data = JSON.parse(data);
+          } catch {}
+        }
+        if (!data) return;
+
+        // VK Video player postMessage events:
+        // "started", "resumed", "paused", "ended", "timeupdate", "seeked"
+        const eventType = data.event || data.action || data.type;
+        const time = Number(data.time || data.currentTime || 0);
+
+        if (eventType === 'started' || eventType === 'resumed' || eventType === 'play') {
+          onSyncAction('play', time);
+        } else if (eventType === 'paused' || eventType === 'pause') {
+          onSyncAction('pause', time);
+        } else if (eventType === 'seeked') {
+          onSyncAction('seek', time);
+        }
+      } catch {}
+    };
+
+    window.addEventListener('message', handleWindowMessage);
+    return () => {
+      window.removeEventListener('message', handleWindowMessage);
+    };
+  }, [platform, onSyncAction]);
+
+  // 3. Handle incoming sync packets from peer (YouTube and VK Video)
   useEffect(() => {
     if (!incomingSync) return;
     const { action, time } = incomingSync;
@@ -163,26 +193,21 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         if (action === 'play') {
           player.seekTo(time, true);
           player.playVideo();
-          setIsPlaying(true);
         } else if (action === 'pause') {
           player.seekTo(time, true);
           player.pauseVideo();
-          setIsPlaying(false);
         } else if (action === 'seek') {
           player.seekTo(time, true);
         }
       }
     } else if (platform === 'vk') {
-      // VK postMessage communication
       const iframe = vkIframeRef.current;
       if (iframe && iframe.contentWindow) {
         try {
           if (action === 'play') {
             iframe.contentWindow.postMessage(JSON.stringify({ method: 'play' }), '*');
-            setIsPlaying(true);
           } else if (action === 'pause') {
             iframe.contentWindow.postMessage(JSON.stringify({ method: 'pause' }), '*');
-            setIsPlaying(false);
           } else if (action === 'seek') {
             iframe.contentWindow.postMessage(JSON.stringify({ method: 'seek', time: time }), '*');
           }
@@ -197,26 +222,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }, 800);
   }, [incomingSync, platform]);
 
-  // VK manual controls trigger
-  const handleVkControl = (action: 'play' | 'pause' | 'seek', time = 0) => {
-    const iframe = vkIframeRef.current;
-    if (iframe && iframe.contentWindow) {
-      try {
-        if (action === 'play') {
-          iframe.contentWindow.postMessage(JSON.stringify({ method: 'play' }), '*');
-          setIsPlaying(true);
-        } else if (action === 'pause') {
-          iframe.contentWindow.postMessage(JSON.stringify({ method: 'pause' }), '*');
-          setIsPlaying(false);
-        } else if (action === 'seek') {
-          iframe.contentWindow.postMessage(JSON.stringify({ method: 'seek', time }), '*');
-        }
-      } catch {}
-    }
-    onSyncAction(action, time);
-  };
-
-  // Build VK Embed URL
+  // Build VK Embed URL with js_api=1
   const getVkUrl = () => {
     let oid = vkOid;
     let id = vkId;
@@ -268,33 +274,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               allowFullScreen
               title="VK Video Player"
             />
-
-            {/* Quick VK sync controls toolbar for host & participants */}
-            <div className="absolute bottom-2 left-2 right-2 z-20 bg-black/75 backdrop-blur-md border border-white/10 rounded-lg p-2 flex items-center justify-between text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity">
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleVkControl(isPlaying ? 'pause' : 'play', 0)}
-                  className="px-2.5 py-1 bg-white/10 hover:bg-white/20 rounded flex items-center gap-1 font-semibold cursor-pointer"
-                >
-                  {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-                  {isPlaying ? 'Пауза всем' : 'Воспроизведение всем'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleVkControl('seek', 0)}
-                  className="px-2 py-1 bg-white/10 hover:bg-white/20 rounded flex items-center gap-1 cursor-pointer"
-                  title="В начало"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  В начало
-                </button>
-              </div>
-
-              <span className="text-[11px] text-neutral-400 hidden sm:inline">
-                Синхронизация VK Видео активна
-              </span>
-            </div>
           </div>
         )}
       </div>
