@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* Custom thin scrollbar */
+/* 1. Global & Scrollbar */
 ::-webkit-scrollbar {
   width: 5px;
   height: 5px;
@@ -19,29 +19,91 @@
   background: #555555;
 }
 
-/* Original Sidebar Area styling */
+/* 1. Раскладка: двухколоночная сетка */
+.room-container {
+  display: grid;
+  grid-template-columns: 1fr 320px;   /* слева видео, справа чат */
+  gap: 1.5rem;
+  flex: 1;
+  width: 100%;
+}
+
+@media (min-width: 1025px) {
+  body {
+    overflow-y: hidden; /* Prevent body scroll on large screens */
+    height: 100vh;
+  }
+  .app-container {
+    height: calc(100vh - 3.5rem);
+    overflow: hidden;
+    padding: 1rem 1.5rem;
+  }
+  .room-container {
+    height: 100%;
+    grid-template-columns: 1fr 350px; /* на ПК чат 350px */
+    overflow: hidden;
+  }
+  .video-area {
+    height: 100%;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+  .video-stage {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+}
+
+@media (max-width: 1024px) {
+  .room-container {
+    grid-template-columns: 1fr;       /* на мобилках чат уходит под видео */
+    gap: 1.25rem;
+  }
+  .video-area {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+  .video-stage {
+    min-height: 280px;
+    position: relative;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .sidebar-area {
+    height: 480px !important;        /* Фиксированная высота на планшетах / мобилках */
+    min-height: auto;
+  }
+}
+
+/* 2. Оформление «окна»: стили .sidebar-area */
 .sidebar-area {
   display: flex;
   flex-direction: column;
-  background: rgba(10, 10, 10, 0.75);
-  backdrop-filter: blur(24px);
+  background: rgba(10, 10, 10, 0.7);
+  backdrop-filter: blur(24px);                       /* матовое стекло */
   -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);       /* рамка */
+  border-radius: 12px;                               /* скругление */
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.02);   /* тень, "парит" над фоном */
   overflow: hidden;
   height: 100%;
   max-height: 100%;
   position: relative;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.02);
 }
 
 .sidebar-header {
-  padding: 0.9rem 1rem;
+  padding: 1rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: rgba(17, 17, 17, 0.45);
+  background: rgba(17, 17, 17, 0.4);
   flex-shrink: 0;
 }
 
@@ -66,6 +128,7 @@
   border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
+/* 3. Собственная прокрутка */
 .chat-messages {
   flex: 1;
   overflow-y: auto;
@@ -191,6 +254,7 @@
   border-bottom-left-radius: 3px;
 }
 
+/* Emoji Bar */
 .emoji-bar-container {
   display: flex;
   justify-content: space-around;
@@ -221,6 +285,7 @@
   transform: scale(0.9);
 }
 
+/* Chat Form */
 .chat-form {
   display: flex;
   gap: 0.5rem;
