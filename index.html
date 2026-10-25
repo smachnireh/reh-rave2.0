@@ -9,13 +9,2047 @@
     <meta property="og:description" content="Синхронный совместный просмотр видео YouTube и VK Видео в реальном времени с чатом, реакциями, аккаунтами и детальной статистикой времени." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
+
+    <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
+
+    <!-- PeerJS CDN for WebRTC connection -->
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+
+    <style>
+      /* Reset & Global */
+      *, *::before, *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background-color: #0a0a0a;
+        color: #e0e0e0;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        overflow-x: hidden;
+        user-select: text;
+      }
+      a { color: inherit; text-decoration: none; }
+      button { font-family: inherit; }
+
+      /* Custom Scrollbar */
+      ::-webkit-scrollbar { width: 5px; height: 5px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 4px; }
+      ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.3); }
+
+      .hidden { display: none !important; }
+
+      /* Background Ambient Glowing Orbs */
+      .ambient-orb {
+        position: fixed;
+        width: 550px;
+        height: 550px;
+        border-radius: 50%;
+        filter: blur(140px);
+        opacity: 0.16;
+        pointer-events: none;
+        z-index: 0;
+        transition: background 8s ease-in-out, transform 8s ease-in-out;
+      }
+      #orb-1 { top: -150px; right: -150px; background: radial-gradient(circle, #ef4444 0%, transparent 70%); }
+      #orb-2 { bottom: -150px; left: -150px; background: radial-gradient(circle, #3b82f6 0%, transparent 70%); }
+
+      /* Toast Notifications */
+      .toast-container {
+        position: fixed;
+        top: 1.25rem;
+        right: 1.25rem;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        pointer-events: none;
+      }
+      .toast {
+        background: rgba(18, 18, 18, 0.95);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(16px);
+        color: #fff;
+        padding: 0.75rem 1.15rem;
+        border-radius: 12px;
+        font-size: 0.85rem;
+        font-weight: 500;
+        box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6);
+        transform: translateX(120%);
+        transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease;
+        opacity: 0;
+        pointer-events: auto;
+      }
+      .toast.show { transform: translateX(0); opacity: 1; }
+      .toast-success { border-left: 3px solid #10b981; }
+      .toast-error { border-left: 3px solid #ef4444; }
+      .toast-info { border-left: 3px solid #3b82f6; }
+
+      /* Universal App Header */
+      header {
+        height: 3.5rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(15, 15, 15, 0.85);
+        backdrop-filter: blur(20px);
+        padding: 0 1.25rem;
+        width: 100%;
+        position: sticky;
+        top: 0;
+        z-index: 40;
+      }
+      .header-left {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+      }
+      .brand-title {
+        font-size: 1.15rem;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        color: #ffffff;
+      }
+      .brand-sub {
+        font-size: 0.75rem;
+        color: #666;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        border-left: 1px solid #262626;
+        padding-left: 0.75rem;
+      }
+
+      /* Time tracker badges in header */
+      .header-stats-group {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        border-left: 1px solid #262626;
+        padding-left: 0.75rem;
+      }
+      .stat-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.25rem 0.65rem;
+        border-radius: 9999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        border: 1px solid transparent;
+      }
+      .stat-pill-yt {
+        background: rgba(239, 68, 68, 0.12);
+        color: #fca5a5;
+        border-color: rgba(239, 68, 68, 0.25);
+      }
+      .stat-pill-yt:hover { background: rgba(239, 68, 68, 0.22); }
+      .stat-pill-vk {
+        background: rgba(59, 130, 246, 0.12);
+        color: #93c5fd;
+        border-color: rgba(59, 130, 246, 0.25);
+      }
+      .stat-pill-vk:hover { background: rgba(59, 130, 246, 0.22); }
+
+      /* Profile button */
+      .header-right {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+      .btn-header-icon {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        color: #bbb;
+        padding: 0.4rem;
+        border-radius: 8px;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.15s;
+      }
+      .btn-header-icon:hover {
+        background: rgba(255, 255, 255, 0.1);
+        color: #fff;
+      }
+      .profile-badge {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: #181818;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        padding: 0.25rem 0.75rem 0.25rem 0.35rem;
+        border-radius: 9999px;
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+      .profile-badge:hover {
+        border-color: rgba(255, 255, 255, 0.25);
+        background: #202020;
+      }
+      .avatar-circle {
+        width: 1.75rem;
+        height: 1.75rem;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: #fff;
+        overflow: hidden;
+        background-size: cover;
+        background-position: center;
+        shrink: 0;
+      }
+      .profile-name {
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: #fff;
+        max-width: 120px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .provider-tag {
+        font-size: 0.65rem;
+        padding: 0.1rem 0.35rem;
+        border-radius: 4px;
+        font-weight: 700;
+        text-transform: uppercase;
+        background: rgba(255, 255, 255, 0.1);
+        color: #aaa;
+      }
+      .provider-tag.gmail {
+        background: rgba(239, 68, 68, 0.2);
+        color: #f87171;
+      }
+
+      /* Main container */
+      .app-container {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        max-width: 1440px;
+        margin: 0 auto;
+        padding: 1rem 1.25rem;
+        position: relative;
+        z-index: 10;
+      }
+
+      /* 1. MAIN MENU SCREEN */
+      .main-menu-view {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 1.5rem 0;
+      }
+      .menu-card {
+        background: rgba(14, 14, 14, 0.85);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        backdrop-filter: blur(24px);
+        border-radius: 20px;
+        padding: 2.25rem;
+        width: 100%;
+        max-width: 420px;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+      }
+      .menu-header {
+        text-align: center;
+        margin-bottom: 1.5rem;
+      }
+      .menu-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.2rem 0.65rem;
+        border-radius: 9999px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        font-size: 0.72rem;
+        font-weight: 600;
+        color: #bbb;
+        margin-bottom: 0.75rem;
+      }
+      .menu-title {
+        font-size: 2rem;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        color: #fff;
+        line-height: 1.1;
+      }
+      .menu-subtitle {
+        font-size: 0.85rem;
+        color: #666;
+        margin-top: 0.4rem;
+      }
+
+      /* Profile Banner inside Menu */
+      .menu-profile-banner {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 12px;
+        padding: 0.75rem 1rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 1.25rem;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      .menu-profile-banner:hover {
+        background: rgba(255, 255, 255, 0.06);
+      }
+
+      /* Created code box */
+      .created-box {
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px dashed rgba(255, 255, 255, 0.2);
+        border-radius: 12px;
+        padding: 1rem;
+        text-align: center;
+        margin-bottom: 1.25rem;
+      }
+      .created-box-title {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #888;
+        font-weight: 700;
+        margin-bottom: 0.35rem;
+      }
+      .created-code-row {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.75rem;
+      }
+      .created-code {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 1.75rem;
+        font-weight: 800;
+        color: #fff;
+        letter-spacing: 0.08em;
+      }
+
+      /* Buttons & Inputs */
+      .btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        padding: 0.85rem 1.25rem;
+        border-radius: 12px;
+        font-weight: 700;
+        font-size: 0.875rem;
+        border: none;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        width: 100%;
+      }
+      .btn-primary {
+        background: #ffffff;
+        color: #000000;
+      }
+      .btn-primary:hover { background: #e5e5e5; transform: translateY(-1px); }
+      .btn-vk {
+        background: #2787f5;
+        color: #ffffff;
+      }
+      .btn-vk:hover { background: #1c75de; transform: translateY(-1px); }
+      .btn-secondary {
+        background: #222222;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        color: #ffffff;
+      }
+      .btn-secondary:hover { background: #2a2a2a; }
+
+      .menu-divider {
+        height: 1px;
+        background: rgba(255, 255, 255, 0.08);
+        margin: 1.25rem 0;
+        position: relative;
+      }
+      .menu-divider-text {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: #0e0e0e;
+        padding: 0 0.75rem;
+        color: #666;
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+
+      .input-code {
+        width: 100%;
+        background: #181818;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 12px;
+        padding: 0.8rem 1rem;
+        color: #ffffff;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 1.15rem;
+        font-weight: 700;
+        text-align: center;
+        letter-spacing: 0.15em;
+        text-transform: uppercase;
+        outline: none;
+        transition: border-color 0.15s;
+        margin-bottom: 0.65rem;
+      }
+      .input-code:focus { border-color: #ffffff; }
+
+      /* Quick preset chips */
+      .preset-chips-row {
+        margin-top: 1.25rem;
+        padding-top: 1rem;
+        border-top: 1px solid rgba(255, 255, 255, 0.06);
+      }
+      .preset-chip-title {
+        font-size: 0.7rem;
+        font-weight: 700;
+        color: #666;
+        text-transform: uppercase;
+        margin-bottom: 0.5rem;
+        text-align: center;
+      }
+      .preset-chips {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.5rem;
+      }
+      .preset-chip {
+        padding: 0.5rem 0.6rem;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        color: #ccc;
+        font-size: 0.75rem;
+        font-weight: 600;
+        cursor: pointer;
+        text-align: left;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        transition: all 0.15s;
+      }
+      .preset-chip:hover {
+        background: rgba(255, 255, 255, 0.08);
+        color: #fff;
+      }
+
+      /* 2. ROOM SCREEN LAYOUT */
+      .room-view {
+        display: grid;
+        grid-template-columns: 1fr 340px;
+        gap: 1.25rem;
+        flex: 1;
+        width: 100%;
+        min-height: 0;
+      }
+      @media (max-width: 1024px) {
+        .room-view { grid-template-columns: 1fr; }
+      }
+
+      /* Left: Video Area */
+      .video-area {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+      .room-topbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: rgba(18, 18, 18, 0.85);
+        backdrop-filter: blur(16px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        padding: 0.65rem 1rem;
+        border-radius: 12px;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+      }
+      .room-code-badge {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.75rem;
+        color: #888;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+      .code-badge-value {
+        font-family: 'JetBrains Mono', monospace;
+        font-weight: 800;
+        color: #fff;
+        font-size: 0.9rem;
+        background: #222;
+        padding: 0.2rem 0.55rem;
+        border-radius: 6px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+      .code-badge-value:hover {
+        background: #fff;
+        color: #000;
+      }
+
+      /* Video Stage */
+      .video-stage {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 16/9;
+        background: #000;
+        border-radius: 14px;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow: 0 20px 48px rgba(0, 0, 0, 0.8);
+      }
+      .video-stage iframe {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        border: none;
+      }
+
+      /* VK Video Overlay Toolbar */
+      .vk-sync-toolbar {
+        position: absolute;
+        bottom: 10px;
+        left: 10px;
+        right: 10px;
+        background: rgba(0, 0, 0, 0.8);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 8px;
+        padding: 0.45rem 0.75rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        z-index: 20;
+        opacity: 0;
+        transition: opacity 0.2s ease;
+      }
+      .video-stage:hover .vk-sync-toolbar { opacity: 1; }
+      .btn-vk-ctrl {
+        background: rgba(255, 255, 255, 0.12);
+        color: #fff;
+        border: none;
+        padding: 0.25rem 0.65rem;
+        border-radius: 6px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      .btn-vk-ctrl:hover { background: rgba(255, 255, 255, 0.25); }
+
+      /* Loader form */
+      .loader-row {
+        display: flex;
+        gap: 0.5rem;
+        background: rgba(18, 18, 18, 0.85);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        padding: 0.6rem;
+        border-radius: 12px;
+      }
+      .loader-input {
+        flex: 1;
+        background: #111;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        padding: 0.55rem 0.85rem;
+        color: #fff;
+        font-size: 0.85rem;
+        outline: none;
+        transition: border-color 0.15s;
+      }
+      .loader-input:focus { border-color: rgba(255, 255, 255, 0.3); }
+      .btn-load {
+        font-weight: 700;
+        font-size: 0.82rem;
+        padding: 0 1.25rem;
+        border-radius: 8px;
+        border: none;
+        background: #fff;
+        color: #000;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      .btn-load:hover { background: #e5e5e5; }
+
+      /* Right: Sidebar Chat */
+      .sidebar-area {
+        display: flex;
+        flex-direction: column;
+        background: rgba(16, 16, 16, 0.85);
+        backdrop-filter: blur(24px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 16px;
+        overflow: hidden;
+        height: 100%;
+        max-height: 100%;
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+      }
+      @media (max-width: 1024px) {
+        .sidebar-area { height: 480px; }
+      }
+      .sidebar-header {
+        padding: 0.85rem 1rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: rgba(255, 255, 255, 0.02);
+      }
+      .sidebar-title {
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      .online-badge {
+        font-size: 0.72rem;
+        font-weight: 700;
+        color: #10b981;
+        background: rgba(16, 185, 129, 0.12);
+        border: 1px solid rgba(16, 185, 129, 0.25);
+        padding: 0.15rem 0.5rem;
+        border-radius: 9999px;
+      }
+
+      /* Chat Messages */
+      .chat-messages {
+        flex: 1;
+        overflow-y: auto;
+        padding: 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.85rem;
+      }
+      .msg-item {
+        display: flex;
+        align-items: flex-end;
+        gap: 0.6rem;
+        max-width: 88%;
+      }
+      .msg-item.self {
+        align-self: flex-end;
+        flex-direction: row-reverse;
+      }
+      .msg-item.other {
+        align-self: flex-start;
+      }
+      .msg-avatar {
+        width: 1.85rem;
+        height: 1.85rem;
+        border-radius: 50%;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.72rem;
+        font-weight: 700;
+        color: #fff;
+        shrink: 0;
+        position: relative;
+        background-size: cover;
+        background-position: center;
+      }
+      .msg-crown {
+        position: absolute;
+        top: -8px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 12px;
+        height: 12px;
+        fill: #ffb703;
+      }
+      .msg-body {
+        display: flex;
+        flex-direction: column;
+        gap: 0.15rem;
+      }
+      .msg-item.self .msg-body { align-items: flex-end; }
+      .msg-meta {
+        font-size: 0.68rem;
+        color: #777;
+        font-weight: 600;
+      }
+      .msg-text {
+        font-size: 0.85rem;
+        line-height: 1.35;
+        padding: 0.5rem 0.8rem;
+        border-radius: 14px;
+        word-break: break-word;
+      }
+      .msg-item.self .msg-text {
+        background: rgba(255, 255, 255, 0.15);
+        color: #fff;
+        border-bottom-right-radius: 2px;
+      }
+      .msg-item.other .msg-text {
+        background: rgba(255, 255, 255, 0.06);
+        color: #e5e5e5;
+        border-bottom-left-radius: 2px;
+      }
+
+      /* Emoji Bar */
+      .emoji-bar {
+        display: flex;
+        justify-content: space-around;
+        padding: 0.4rem;
+        background: rgba(0, 0, 0, 0.35);
+        border-top: 1px solid rgba(255, 255, 255, 0.05);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      }
+      .emoji-btn {
+        background: none;
+        border: none;
+        font-size: 1.15rem;
+        cursor: pointer;
+        padding: 0.2rem;
+        transition: transform 0.15s;
+      }
+      .emoji-btn:hover { transform: scale(1.35); }
+      .emoji-btn:active { transform: scale(0.9); }
+
+      /* Floating Emoji */
+      @keyframes flyUp {
+        0% { transform: translateY(0) scale(0.6); opacity: 0; }
+        20% { opacity: 1; transform: translateY(-20px) scale(1.3); }
+        100% { transform: translateY(-240px) scale(0.9); opacity: 0; }
+      }
+      .flying-emoji {
+        position: absolute;
+        bottom: 20px;
+        font-size: 2.25rem;
+        pointer-events: none;
+        z-index: 50;
+        animation: flyUp 2.4s cubic-bezier(0.12, 0.74, 0.28, 0.98) forwards;
+      }
+
+      /* Chat form */
+      .chat-form {
+        display: flex;
+        gap: 0.45rem;
+        padding: 0.75rem;
+        background: rgba(255, 255, 255, 0.02);
+      }
+      .chat-input {
+        flex: 1;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 8px;
+        padding: 0.45rem 0.75rem;
+        color: #fff;
+        font-size: 0.85rem;
+        outline: none;
+      }
+      .chat-input:focus { border-color: rgba(255, 255, 255, 0.25); }
+      .btn-chat-send {
+        background: #fff;
+        color: #000;
+        border: none;
+        border-radius: 8px;
+        padding: 0.45rem 0.85rem;
+        font-size: 0.8rem;
+        font-weight: 700;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      .btn-chat-send:hover { background: #e5e5e5; }
+
+      /* MODALS OVERLAY */
+      .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.85);
+        backdrop-filter: blur(14px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+        padding: 1rem;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.25s ease;
+      }
+      .modal-overlay.active {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      .modal-box {
+        background: #111111;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 18px;
+        width: 100%;
+        max-width: 440px;
+        box-shadow: 0 28px 70px rgba(0, 0, 0, 0.85);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        max-height: 90vh;
+      }
+      .modal-header {
+        padding: 1rem 1.25rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: rgba(255, 255, 255, 0.02);
+      }
+      .modal-title {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #fff;
+      }
+      .modal-close {
+        background: none;
+        border: none;
+        color: #888;
+        font-size: 1.25rem;
+        cursor: pointer;
+        padding: 0.25rem;
+      }
+      .modal-close:hover { color: #fff; }
+      .modal-body {
+        padding: 1.25rem;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 1.15rem;
+      }
+
+      /* Tabs inside Auth modal */
+      .auth-tabs {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        background: rgba(0, 0, 0, 0.4);
+        padding: 0.25rem;
+        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.05);
+      }
+      .auth-tab {
+        background: none;
+        border: none;
+        padding: 0.45rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: #888;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.15s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.25rem;
+      }
+      .auth-tab.active {
+        background: #fff;
+        color: #000;
+        font-weight: 700;
+      }
+
+      .form-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+        text-align: left;
+      }
+      .form-label {
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #888;
+      }
+      .form-input {
+        background: #181818;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        padding: 0.65rem 0.85rem;
+        color: #fff;
+        font-size: 0.875rem;
+        outline: none;
+        transition: border-color 0.15s;
+      }
+      .form-input:focus { border-color: rgba(255, 255, 255, 0.3); }
+
+      /* Stats cards inside Stats Modal */
+      .stats-card-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.75rem;
+      }
+      .stats-box {
+        background: #181818;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 12px;
+        padding: 1rem;
+        text-align: left;
+      }
+      .stats-box.yt { border-color: rgba(239, 68, 68, 0.25); }
+      .stats-box.vk { border-color: rgba(59, 130, 246, 0.25); }
+      .stats-val {
+        font-size: 1.35rem;
+        font-weight: 800;
+        color: #fff;
+        margin-top: 0.25rem;
+      }
+    </style>
   </head>
-  <body class="bg-[#0a0a0a] text-[#e0e0e0] font-sans antialiased overflow-x-hidden min-h-screen">
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+  <body>
+    <!-- Background Orbs -->
+    <div id="orb-1" class="ambient-orb"></div>
+    <div id="orb-2" class="ambient-orb"></div>
+
+    <!-- Toast Notifications -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- UNIVERSAL HEADER -->
+    <header>
+      <div class="header-left">
+        <div style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;" onclick="showMainMenu()">
+          <span class="brand-title">rave reh</span>
+          <span class="brand-sub">YouTube & VK Видео</span>
+        </div>
+
+        <!-- Quick watch time counters in header -->
+        <div class="header-stats-group" id="header-stats">
+          <div class="stat-pill stat-pill-yt" onclick="openStatsModal()" title="Общее время аккаунта в YouTube комнатах">
+            <span>YT:</span>
+            <span id="hdr-yt-time">0 сек.</span>
+          </div>
+          <div class="stat-pill stat-pill-vk" onclick="openStatsModal()" title="Общее время аккаунта в VK комнатах">
+            <span>VK:</span>
+            <span id="hdr-vk-time">0 сек.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="header-right">
+        <!-- Stats Button -->
+        <button class="btn-header-icon" onclick="openStatsModal()" title="Подробная статистика времени">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10"></path><path d="M12 20V4"></path><path d="M6 20v-6"></path></svg>
+        </button>
+
+        <!-- Profile Badge -->
+        <div class="profile-badge" id="profile-badge-btn" onclick="openProfileModal()" title="Настройки профиля">
+          <div class="avatar-circle" id="hdr-avatar">R</div>
+          <span class="profile-name" id="hdr-nick">Загрузка...</span>
+          <span class="provider-tag" id="hdr-provider">Гость</span>
+        </div>
+
+        <!-- Auth Button -->
+        <button class="btn-header-icon" id="btn-auth-toggle" onclick="openAuthModal()" title="Вход / Регистрация">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="app-container">
+      <!-- 1. MAIN MENU SCREEN -->
+      <main id="main-menu" class="main-menu-view">
+        <div class="menu-card">
+          <div class="menu-header">
+            <div class="menu-badge">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"></path></svg>
+              Синхронный видеоплеер WebRTC
+            </div>
+            <h1 class="menu-title">rave reh</h1>
+            <p class="menu-subtitle">Совместный просмотр YouTube и VK Видео со 100% синхронностью</p>
+          </div>
+
+          <!-- Account Banner -->
+          <div class="menu-profile-banner" onclick="openProfileModal()">
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+              <div class="avatar-circle" id="menu-avatar">R</div>
+              <div style="text-align: left;">
+                <div style="font-size: 0.85rem; font-weight: 700; color: #fff;" id="menu-nick">...</div>
+                <div style="font-size: 0.72rem; color: #888;" id="menu-stats-preview">Общее время: 0 сек.</div>
+              </div>
+            </div>
+            <span style="font-size: 0.75rem; font-weight: 600; color: #bbb;">Профиль →</span>
+          </div>
+
+          <!-- Created Box after room creation -->
+          <div id="created-box" class="created-box hidden">
+            <div class="created-box-title">Ваша комната создана</div>
+            <div class="created-code-row">
+              <span id="room-code-display" class="created-code">------</span>
+              <button class="btn-header-icon" id="btn-copy-code" style="padding: 0.4rem 0.75rem; font-size: 0.75rem; gap: 4px;">
+                Копировать
+              </button>
+            </div>
+          </div>
+
+          <!-- Create buttons for YouTube and VK Video -->
+          <div style="display: flex; flex-direction: column; gap: 0.65rem; margin-bottom: 1.25rem;">
+            <button class="btn btn-primary" onclick="createRoom('youtube')">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="#dc2626"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+              Создать YouTube комнату
+            </button>
+
+            <button class="btn btn-vk" onclick="createRoom('vk')">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect width="20" height="15" x="2" y="7" rx="2" ry="2"></rect><polyline points="17 2 12 7 7 2"></polyline></svg>
+              Создать VK Видео комнату
+            </button>
+          </div>
+
+          <div class="menu-divider">
+            <span class="menu-divider-text">или код</span>
+          </div>
+
+          <!-- Join room input -->
+          <div>
+            <input type="text" id="join-code-input" class="input-code" placeholder="КОД КОМНАТЫ" maxlength="6" />
+            <button class="btn btn-secondary" onclick="joinRoom()">
+              Присоединиться к комнате
+            </button>
+          </div>
+
+          <!-- Quick presets -->
+          <div class="preset-chips-row">
+            <div class="preset-chip-title">Быстрый тест без запарки</div>
+            <div class="preset-chips">
+              <button class="preset-chip" onclick="quickLaunch('youtube', 'jfKfPfyJRdk')">🎵 Lofi Beats (YT)</button>
+              <button class="preset-chip" onclick="quickLaunch('vk', '-22822305_456241984')">📺 VK Видео Клип</button>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <!-- 2. ROOM SCREEN VIEW -->
+      <main id="room-view" class="room-view hidden">
+        <div class="video-area">
+          <!-- Room Control Board Top -->
+          <div class="room-topbar">
+            <div class="room-code-badge">
+              <span>КОД:</span>
+              <span id="badge-code-val" class="code-badge-value" onclick="copyRoomCode(currentRoomCode)" title="Скопировать код">------</span>
+              <span id="room-platform-badge" style="font-size: 0.72rem; padding: 0.2rem 0.5rem; border-radius: 6px; background: rgba(255,255,255,0.06); color: #fff; font-weight: 700;">YouTube</span>
+            </div>
+
+            <div style="display: flex; items-center; gap: 0.5rem;">
+              <!-- Live Session Timer -->
+              <div style="display: flex; align-items: center; gap: 0.35rem; font-family: monospace; font-size: 0.75rem; color: #f59e0b; background: rgba(0,0,0,0.5); padding: 0.25rem 0.6rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.08);">
+                <span>⏱</span>
+                <span id="session-timer-text">00:00</span>
+              </div>
+              <button class="btn-vk-ctrl" style="background: rgba(239, 68, 68, 0.2); color: #fca5a5;" onclick="leaveRoom()">
+                Выйти
+              </button>
+            </div>
+          </div>
+
+          <!-- Video Stage -->
+          <div class="video-stage" id="video-stage-box">
+            <!-- YouTube player target div -->
+            <div id="player" style="width: 100%; height: 100%;"></div>
+
+            <!-- VK Video iframe container -->
+            <iframe id="vk-iframe" class="hidden" allow="autoplay; encrypted-media; fullscreen; picture-in-picture;" allowfullscreen></iframe>
+
+            <!-- VK Video controls toolbar -->
+            <div id="vk-toolbar" class="vk-sync-toolbar hidden">
+              <div style="display: flex; gap: 0.35rem;">
+                <button class="btn-vk-ctrl" onclick="sendVkSync('play')">▶ Пуск всем</button>
+                <button class="btn-vk-ctrl" onclick="sendVkSync('pause')">⏸ Пауза всем</button>
+                <button class="btn-vk-ctrl" onclick="sendVkSync('seek', 0)">↺ В начало</button>
+              </div>
+              <span style="font-size: 0.7rem; color: #888;">Синхронизация VK Видео активна</span>
+            </div>
+          </div>
+
+          <!-- Load Video Input -->
+          <div class="loader-row">
+            <input type="text" id="video-url-input" class="loader-input" placeholder="Вставьте ссылку на YouTube или VK Видео..." />
+            <button class="btn-load" onclick="handleLoadVideoInput()">Загрузить</button>
+          </div>
+        </div>
+
+        <!-- Sidebar: Chat & Reactions -->
+        <div class="sidebar-area">
+          <div class="sidebar-header">
+            <span class="sidebar-title">Чат комнаты</span>
+            <span class="online-badge" id="online-counter">1 онлайн</span>
+          </div>
+
+          <!-- Messages scroll area -->
+          <div class="chat-messages" id="chat-messages"></div>
+
+          <!-- Emoji Reaction Bar -->
+          <div class="emoji-bar">
+            <button class="emoji-btn" onclick="sendReaction('👍')">👍</button>
+            <button class="emoji-btn" onclick="sendReaction('😂')">😂</button>
+            <button class="emoji-btn" onclick="sendReaction('❤️')">❤️</button>
+            <button class="emoji-btn" onclick="sendReaction('🔥')">🔥</button>
+            <button class="emoji-btn" onclick="sendReaction('🎉')">🎉</button>
+            <button class="emoji-btn" onclick="sendReaction('😮')">😮</button>
+            <button class="emoji-btn" onclick="sendReaction('😢')">😢</button>
+          </div>
+
+          <!-- Chat form -->
+          <form class="chat-form" onsubmit="handleSendChat(event)">
+            <input type="text" id="chat-text-input" class="chat-input" placeholder="Напишите сообщение..." autocomplete="off" />
+            <button type="submit" class="btn-chat-send">Отправить</button>
+          </form>
+        </div>
+      </main>
+    </div>
+
+    <!-- MODAL 1: AUTH & GMAIL MODAL -->
+    <div id="auth-modal" class="modal-overlay">
+      <div class="modal-box">
+        <div class="modal-header">
+          <span class="modal-title">Вход и Регистрация</span>
+          <button class="modal-close" onclick="closeAuthModal()">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="auth-tabs">
+            <button class="auth-tab active" id="tab-btn-google" onclick="switchAuthTab('google')">
+              <svg width="14" height="14" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
+              Gmail
+            </button>
+            <button class="auth-tab" id="tab-btn-login" onclick="switchAuthTab('login')">Вход</button>
+            <button class="auth-tab" id="tab-btn-reg" onclick="switchAuthTab('reg')">Регистрация</button>
+          </div>
+
+          <!-- 1. Google / Gmail Template Tab -->
+          <div id="auth-panel-google" style="display: flex; flex-direction: column; gap: 0.85rem;">
+            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); padding: 1rem; border-radius: 12px; text-align: center;">
+              <div style="font-size: 0.85rem; font-weight: 700; color: #fff;">Шаблон Google Identity (Gmail)</div>
+              <div style="font-size: 0.72rem; color: #888; margin-top: 0.25rem;">
+                Мгновенно создаёт или подгружает ваш профиль с привязкой к Gmail без серверов и без терминала
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Ваш Gmail адрес</label>
+              <input type="email" id="gmail-input" class="form-input" value="dkit59102@gmail.com" />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Отображаемое имя</label>
+              <input type="text" id="gmail-nick-input" class="form-input" value="Денис" maxlength="18" />
+            </div>
+
+            <button class="btn btn-primary" onclick="submitGoogleAuth()">
+              Войти через Google (Gmail)
+            </button>
+
+            <div style="font-size: 0.72rem; color: #10b981; text-align: center;">
+              ✓ Все данные и статистика аккаунта сохраняются в браузере навсегда
+            </div>
+          </div>
+
+          <!-- 2. Email Login Tab -->
+          <div id="auth-panel-login" class="hidden" style="display: flex; flex-direction: column; gap: 0.85rem;">
+            <div class="form-group">
+              <label class="form-label">Email</label>
+              <input type="email" id="login-email" class="form-input" placeholder="user@example.com" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Пароль</label>
+              <input type="password" id="login-pwd" class="form-input" placeholder="Ваш пароль" />
+            </div>
+            <button class="btn btn-primary" onclick="submitEmailLogin()">Войти в аккаунт</button>
+          </div>
+
+          <!-- 3. Register Tab -->
+          <div id="auth-panel-reg" class="hidden" style="display: flex; flex-direction: column; gap: 0.85rem;">
+            <div class="form-group">
+              <label class="form-label">Имя или Никнейм</label>
+              <input type="text" id="reg-nick" class="form-input" placeholder="Например: Алекс" maxlength="18" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Email (любая почта)</label>
+              <input type="email" id="reg-email" class="form-input" placeholder="mail@example.com" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Пароль</label>
+              <input type="password" id="reg-pwd" class="form-input" placeholder="Минимум 4 знака" />
+            </div>
+            <button class="btn btn-primary" onclick="submitEmailRegister()">Создать аккаунт</button>
+          </div>
+
+          <!-- Saved accounts list -->
+          <div id="saved-accounts-section" style="border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.85rem;">
+            <div style="font-size: 0.72rem; font-weight: 700; color: #888; text-transform: uppercase; margin-bottom: 0.5rem;">
+              Сохраненные аккаунты на устройстве
+            </div>
+            <div id="saved-accounts-list" style="display: flex; flex-direction: column; gap: 0.35rem; max-height: 120px; overflow-y: auto;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 2: PROFILE MODAL -->
+    <div id="profile-modal" class="modal-overlay">
+      <div class="modal-box">
+        <div class="modal-header">
+          <span class="modal-title">Настройки профиля</span>
+          <button class="modal-close" onclick="closeProfileModal()">✕</button>
+        </div>
+        <div class="modal-body" style="text-align: center;">
+          <!-- Avatar Click to Upload -->
+          <div style="margin: 0 auto; position: relative; width: 88px; height: 88px; cursor: pointer;" onclick="document.getElementById('avatar-file').click()">
+            <div class="avatar-circle" id="prof-avatar" style="width: 100%; height: 100%; font-size: 2rem;">R</div>
+            <div style="position: absolute; inset: 0; background: rgba(0,0,0,0.4); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; color: #fff;">
+              📷 Фото
+            </div>
+          </div>
+          <input type="file" id="avatar-file" accept="image/*" style="display: none;" onchange="handleAvatarFile(event)" />
+          <span style="font-size: 0.72rem; color: #777;">Нажмите на фото для выбора аватарки</span>
+
+          <div class="form-group" style="margin-top: 0.5rem;">
+            <label class="form-label">Никнейм</label>
+            <input type="text" id="prof-nick-input" class="form-input" maxlength="18" />
+          </div>
+
+          <!-- Watch Time preview button -->
+          <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 0.75rem; text-align: left; cursor: pointer;" onclick="closeProfileModal(); openStatsModal();">
+            <div style="font-size: 0.72rem; font-weight: 700; color: #888; text-transform: uppercase;">Общее время в комнатах</div>
+            <div style="font-size: 0.9rem; font-weight: 800; color: #fff; margin-top: 0.2rem;" id="prof-total-time">0 сек.</div>
+            <div style="font-size: 0.72rem; color: #f59e0b; margin-top: 0.2rem;">Открыть подробную статистику →</div>
+          </div>
+
+          <div style="display: flex; gap: 0.5rem;">
+            <button class="btn btn-secondary" onclick="closeProfileModal()">Отмена</button>
+            <button class="btn btn-primary" onclick="saveProfileChanges()">Сохранить</button>
+          </div>
+
+          <div style="border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.75rem; display: flex; justify-content: space-between; font-size: 0.75rem;">
+            <button style="background: none; border: none; color: #888; cursor: pointer;" onclick="closeProfileModal(); openAuthModal();">Сменить аккаунт</button>
+            <button style="background: none; border: none; color: #ef4444; cursor: pointer;" onclick="logoutUser()">Выйти</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 3: STATS MODAL -->
+    <div id="stats-modal" class="modal-overlay">
+      <div class="modal-box" style="max-width: 480px;">
+        <div class="modal-header">
+          <span class="modal-title">Статистика времени аккаунта</span>
+          <button class="modal-close" onclick="closeStatsModal()">✕</button>
+        </div>
+        <div class="modal-body">
+          <!-- Rank & Level Banner -->
+          <div style="background: linear-gradient(135deg, rgba(239,68,68,0.15) 0%, rgba(59,130,246,0.15) 100%); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+              <span style="font-size: 0.72rem; font-weight: 700; color: #888; text-transform: uppercase;">Ранг аккаунта</span>
+              <span style="font-size: 0.85rem; font-weight: 800; color: #fff;" id="stats-rank-title">Новичок</span>
+            </div>
+            <div style="background: rgba(255,255,255,0.1); height: 8px; border-radius: 9999px; overflow: hidden; margin-bottom: 0.4rem;">
+              <div id="stats-rank-bar" style="background: #f59e0b; width: 10%; height: 100%; border-radius: 9999px;"></div>
+            </div>
+            <div style="font-size: 0.72rem; color: #bbb;" id="stats-total-time-desc">Общее время: 0 сек.</div>
+          </div>
+
+          <!-- YouTube vs VK Video Cards -->
+          <div class="stats-card-grid">
+            <div class="stats-box yt">
+              <div style="font-size: 0.72rem; font-weight: 700; color: #ef4444; text-transform: uppercase;">YouTube комнаты</div>
+              <div class="stats-val" id="stats-yt-val">0 сек.</div>
+              <div style="font-size: 0.7rem; color: #888; margin-top: 0.25rem;">Суммарный просмотр видео YouTube</div>
+            </div>
+            <div class="stats-box vk">
+              <div style="font-size: 0.72rem; font-weight: 700; color: #3b82f6; text-transform: uppercase;">VK Видео комнаты</div>
+              <div class="stats-val" id="stats-vk-val">0 сек.</div>
+              <div style="font-size: 0.7rem; color: #888; margin-top: 0.25rem;">Суммарный просмотр VK Видео</div>
+            </div>
+          </div>
+
+          <!-- Counters row -->
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; text-align: center;">
+            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); padding: 0.75rem; border-radius: 10px;">
+              <div style="font-size: 1.15rem; font-weight: 800; color: #fff;" id="stats-sessions-val">0</div>
+              <div style="font-size: 0.68rem; color: #888;">Сессий комнат</div>
+            </div>
+            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); padding: 0.75rem; border-radius: 10px;">
+              <div style="font-size: 1.15rem; font-weight: 800; color: #fff;" id="stats-msgs-val">0</div>
+              <div style="font-size: 0.68rem; color: #888;">Сообщений</div>
+            </div>
+            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); padding: 0.75rem; border-radius: 10px;">
+              <div style="font-size: 1.15rem; font-weight: 800; color: #fff;" id="stats-reacts-val">0</div>
+              <div style="font-size: 0.68rem; color: #888;">Реакций</div>
+            </div>
+          </div>
+
+          <div style="font-size: 0.72rem; color: #666; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.65rem; display: flex; justify-content: space-between;">
+            <span>Автосохранение в LocalStorage активно</span>
+            <span style="color: #10b981;">● Синхронизировано</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MAIN JAVASCRIPT APPLICATION LOGIC -->
+    <script>
+      // 1. DATA STORAGE & ACCOUNTS
+      const STORAGE_KEY = 'ravereh_accounts_v2';
+      const ACTIVE_UID_KEY = 'ravereh_active_uid';
+      const animals = ["Кот", "Енот", "Панда", "Лисин", "Сова", "Бобр", "Ёжик", "Носорожек", "Барсук", "Пингвин", "Сокол", "Тигр"];
+
+      function getRandomNick() {
+        const a = animals[Math.floor(Math.random() * animals.length)];
+        return `${a}_${Math.floor(1000 + Math.random() * 9000)}`;
+      }
+
+      function getColorsForString(str) {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+          hash = str.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        const hue1 = Math.abs(hash) % 360;
+        const hue2 = (hue1 + 45) % 360;
+        return `linear-gradient(135deg, hsl(${hue1}, 70%, 50%), hsl(${hue2}, 70%, 35%))`;
+      }
+
+      function formatDuration(sec) {
+        sec = Math.floor(sec || 0);
+        if (sec <= 0) return '0 сек.';
+        const h = Math.floor(sec / 3600);
+        const m = Math.floor((sec % 3600) / 60);
+        const s = sec % 60;
+        if (h > 0) return m > 0 ? `${h} ч. ${m} мин.` : `${h} ч.`;
+        if (m > 0) return s > 0 ? `${m} мин. ${s} с.` : `${m} мин.`;
+        return `${s} сек.`;
+      }
+
+      function getAccounts() {
+        try {
+          return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+        } catch(e) { return []; }
+      }
+
+      function saveAccounts(accs) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(accs));
+      }
+
+      let currentUser = null;
+
+      function loadCurrentUser() {
+        const accs = getAccounts();
+        const activeId = localStorage.getItem(ACTIVE_UID_KEY);
+        if (activeId) {
+          const found = accs.find(a => a.id === activeId);
+          if (found) { currentUser = found; return; }
+        }
+        if (accs.length > 0) {
+          currentUser = accs[0];
+          localStorage.setItem(ACTIVE_UID_KEY, currentUser.id);
+          return;
+        }
+
+        // Create default initial user
+        currentUser = {
+          id: 'user_' + Date.now(),
+          email: '',
+          nickname: getRandomNick(),
+          avatar: '',
+          provider: 'guest',
+          createdAt: Date.now(),
+          stats: { youtubeTimeSeconds: 0, vkTimeSeconds: 0, sessionsCount: 0, messagesCount: 0, reactionsCount: 0 }
+        };
+        accs.push(currentUser);
+        saveAccounts(accs);
+        localStorage.setItem(ACTIVE_UID_KEY, currentUser.id);
+      }
+
+      function saveActiveUser(u) {
+        currentUser = u;
+        const accs = getAccounts();
+        const idx = accs.findIndex(a => a.id === u.id);
+        if (idx >= 0) accs[idx] = u;
+        else accs.push(u);
+        saveAccounts(accs);
+        localStorage.setItem(ACTIVE_UID_KEY, u.id);
+        updateHeaderAndMenuProfile();
+      }
+
+      async function hashPassword(pwd) {
+        const enc = new TextEncoder().encode(pwd + '_ravereh_salt');
+        const buf = await crypto.subtle.digest('SHA-256', enc);
+        return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+      }
+
+      // 2. UI UPDATE HELPERS
+      function updateHeaderAndMenuProfile() {
+        if (!currentUser) return;
+        document.getElementById('hdr-nick').textContent = currentUser.nickname;
+        document.getElementById('menu-nick').textContent = currentUser.nickname;
+        document.getElementById('prof-nick-input').value = currentUser.nickname;
+
+        const prov = currentUser.provider === 'gmail' ? 'Gmail' : currentUser.provider === 'email' ? 'Email' : 'Гость';
+        const provEl = document.getElementById('hdr-provider');
+        provEl.textContent = prov;
+        provEl.className = 'provider-tag' + (currentUser.provider === 'gmail' ? ' gmail' : '');
+
+        // Avatar
+        const avatars = [document.getElementById('hdr-avatar'), document.getElementById('menu-avatar'), document.getElementById('prof-avatar')];
+        avatars.forEach(el => {
+          if (!el) return;
+          if (currentUser.avatar) {
+            el.style.backgroundImage = `url('${currentUser.avatar}')`;
+            el.style.background = 'transparent';
+            el.textContent = '';
+          } else {
+            el.style.backgroundImage = '';
+            el.style.background = getColorsForString(currentUser.nickname);
+            el.textContent = currentUser.nickname.charAt(0).toUpperCase();
+          }
+        });
+
+        // Stats preview
+        const ytSec = currentUser.stats.youtubeTimeSeconds || 0;
+        const vkSec = currentUser.stats.vkTimeSeconds || 0;
+        const total = ytSec + vkSec;
+
+        document.getElementById('hdr-yt-time').textContent = formatDuration(ytSec);
+        document.getElementById('hdr-vk-time').textContent = formatDuration(vkSec);
+        document.getElementById('menu-stats-preview').textContent = `Общее время: ${formatDuration(total)}`;
+        document.getElementById('prof-total-time').textContent = `Всего: ${formatDuration(total)} (YT: ${formatDuration(ytSec)} • VK: ${formatDuration(vkSec)})`;
+      }
+
+      // 3. TOAST NOTIFICATIONS
+      function showToast(msg, type = 'info') {
+        const c = document.getElementById('toast-container');
+        const t = document.createElement('div');
+        t.className = `toast toast-${type}`;
+        t.textContent = msg;
+        c.appendChild(t);
+        t.offsetHeight;
+        t.classList.add('show');
+        setTimeout(() => {
+          t.classList.remove('show');
+          setTimeout(() => t.remove(), 250);
+        }, 3500);
+      }
+
+      function copyRoomCode(code) {
+        if (!code) return;
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(code).then(() => showToast(`Код ${code} скопирован в буфер!`, 'success'));
+        } else {
+          showToast(`Код: ${code}`, 'info');
+        }
+      }
+
+      // 4. MODALS LOGIC
+      function openAuthModal() {
+        renderSavedAccountsList();
+        document.getElementById('auth-modal').classList.add('active');
+      }
+      function closeAuthModal() { document.getElementById('auth-modal').classList.remove('active'); }
+
+      function openProfileModal() {
+        document.getElementById('profile-modal').classList.add('active');
+      }
+      function closeProfileModal() { document.getElementById('profile-modal').classList.remove('active'); }
+
+      function openStatsModal() {
+        updateStatsModalValues();
+        document.getElementById('stats-modal').classList.add('active');
+      }
+      function closeStatsModal() { document.getElementById('stats-modal').classList.remove('active'); }
+
+      function switchAuthTab(tab) {
+        ['google', 'login', 'reg'].forEach(t => {
+          document.getElementById(`tab-btn-${t}`).classList.toggle('active', t === tab);
+          document.getElementById(`auth-panel-${t}`).classList.toggle('hidden', t !== tab);
+        });
+      }
+
+      function renderSavedAccountsList() {
+        const list = document.getElementById('saved-accounts-list');
+        list.innerHTML = '';
+        const accs = getAccounts();
+        accs.forEach(a => {
+          const item = document.createElement('div');
+          item.style.display = 'flex';
+          item.style.alignItems = 'center';
+          item.style.justifyContent = 'space-between';
+          item.style.padding = '0.35rem 0.5rem';
+          item.style.background = a.id === currentUser.id ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.03)';
+          item.style.borderRadius = '6px';
+          item.style.cursor = 'pointer';
+          item.innerHTML = `
+            <div style="font-size: 0.75rem; color: #fff;">${a.nickname} <span style="font-size: 0.65rem; color: #888;">(${a.email || a.provider})</span></div>
+            <span style="font-size: 0.65rem; color: ${a.id === currentUser.id ? '#10b981' : '#aaa'}; font-weight: 700;">${a.id === currentUser.id ? 'Текущий' : 'Выбрать'}</span>
+          `;
+          item.onclick = () => {
+            saveActiveUser(a);
+            showToast(`Аккаунт переключен: ${a.nickname}`, 'success');
+            closeAuthModal();
+          };
+          list.appendChild(item);
+        });
+      }
+
+      function submitGoogleAuth() {
+        const email = document.getElementById('gmail-input').value.trim().toLowerCase();
+        const nick = document.getElementById('gmail-nick-input').value.trim() || email.split('@')[0];
+        if (!email.includes('@')) { showToast('Введите валидный Gmail', 'error'); return; }
+
+        const accs = getAccounts();
+        let target = accs.find(a => a.email.toLowerCase() === email);
+        if (!target) {
+          target = {
+            id: 'acc_g_' + Date.now(),
+            email: email,
+            nickname: nick,
+            avatar: '',
+            provider: 'gmail',
+            createdAt: Date.now(),
+            stats: { ...currentUser.stats }
+          };
+        }
+        saveActiveUser(target);
+        showToast(`Успешный вход через Google: ${nick}`, 'success');
+        closeAuthModal();
+      }
+
+      async function submitEmailLogin() {
+        const email = document.getElementById('login-email').value.trim().toLowerCase();
+        const pwd = document.getElementById('login-pwd').value;
+        const accs = getAccounts();
+        const target = accs.find(a => a.email.toLowerCase() === email);
+        if (!target) { showToast('Аккаунт не найден', 'error'); return; }
+        const h = await hashPassword(pwd);
+        if (target.passwordHash && target.passwordHash !== h) { showToast('Неверный пароль', 'error'); return; }
+        saveActiveUser(target);
+        showToast(`С возвращением, ${target.nickname}!`, 'success');
+        closeAuthModal();
+      }
+
+      async function submitEmailRegister() {
+        const nick = document.getElementById('reg-nick').value.trim();
+        const email = document.getElementById('reg-email').value.trim().toLowerCase();
+        const pwd = document.getElementById('reg-pwd').value;
+        if (!nick || !email || pwd.length < 4) { showToast('Заполните поля (пароль мин. 4 симв.)', 'error'); return; }
+        const accs = getAccounts();
+        if (accs.some(a => a.email.toLowerCase() === email)) { showToast('Email уже зарегистрирован', 'error'); return; }
+        const h = await hashPassword(pwd);
+        const newAcc = {
+          id: 'acc_' + Date.now(),
+          email: email,
+          nickname: nick,
+          avatar: '',
+          provider: 'email',
+          passwordHash: h,
+          createdAt: Date.now(),
+          stats: { ...currentUser.stats }
+        };
+        saveActiveUser(newAcc);
+        showToast(`Аккаунт ${nick} создан!`, 'success');
+        closeAuthModal();
+      }
+
+      function saveProfileChanges() {
+        const newNick = document.getElementById('prof-nick-input').value.trim();
+        if (!newNick) { showToast('Имя не может быть пустым', 'error'); return; }
+        currentUser.nickname = newNick;
+        saveActiveUser(currentUser);
+        showToast('Профиль сохранен', 'success');
+        closeProfileModal();
+        broadcast({ type: 'PROFILE_UPDATE', payload: { newNick, avatar: currentUser.avatar } });
+      }
+
+      function handleAvatarFile(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        const r = new FileReader();
+        r.onload = ev => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = 96; canvas.height = 96;
+            const ctx = canvas.getContext('2d');
+            const minDim = Math.min(img.width, img.height);
+            ctx.drawImage(img, (img.width - minDim) / 2, (img.height - minDim) / 2, minDim, minDim, 0, 0, 96, 96);
+            currentUser.avatar = canvas.toDataURL('image/jpeg', 0.85);
+            saveActiveUser(currentUser);
+            showToast('Аватар обновлен', 'success');
+            broadcast({ type: 'PROFILE_UPDATE', payload: { newNick: currentUser.nickname, avatar: currentUser.avatar } });
+          };
+          img.src = ev.target.result;
+        };
+        r.readAsDataURL(file);
+      }
+
+      function logoutUser() {
+        const accs = getAccounts();
+        const other = accs.find(a => a.id !== currentUser.id);
+        if (other) {
+          saveActiveUser(other);
+          showToast(`Переключено на: ${other.nickname}`, 'info');
+        } else {
+          localStorage.removeItem(ACTIVE_UID_KEY);
+          location.reload();
+        }
+        closeProfileModal();
+      }
+
+      function updateStatsModalValues() {
+        const ytSec = currentUser.stats.youtubeTimeSeconds || 0;
+        const vkSec = currentUser.stats.vkTimeSeconds || 0;
+        const total = ytSec + vkSec;
+
+        document.getElementById('stats-yt-val').textContent = formatDuration(ytSec);
+        document.getElementById('stats-vk-val').textContent = formatDuration(vkSec);
+        document.getElementById('stats-sessions-val').textContent = currentUser.stats.sessionsCount || 0;
+        document.getElementById('stats-msgs-val').textContent = currentUser.stats.messagesCount || 0;
+        document.getElementById('stats-reacts-val').textContent = currentUser.stats.reactionsCount || 0;
+
+        let rankTitle = 'Новичок комнат';
+        let pct = Math.min(100, Math.round((total / 3600) * 100));
+        if (total > 18000) rankTitle = 'Легенда Rave Reh 👑';
+        else if (total > 3600) rankTitle = 'Марафонец видео 🚀';
+        else if (total > 600) rankTitle = 'Активный киноман 🎬';
+        else if (total > 60) rankTitle = 'Зритель синхрона 🍿';
+
+        document.getElementById('stats-rank-title').textContent = rankTitle;
+        document.getElementById('stats-rank-bar').style.width = pct + '%';
+        document.getElementById('stats-total-time-desc').textContent = `Общее суммарное время: ${formatDuration(total)}`;
+      }
+
+      // 5. VIDEO PARSERS (YOUTUBE & VK VIDEO)
+      function extractYtId(url) {
+        url = url.trim();
+        if (/^[a-zA-Z0-9_-]{11}$/.test(url)) return url;
+        const m = url.match(/^.*(youtu\.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/);
+        if (m && m[2].length === 11) return m[2];
+        const s = url.match(/\/shorts\/([a-zA-Z0-9_-]{11})/);
+        return s ? s[1] : null;
+      }
+
+      function extractVkInfo(url) {
+        url = url.trim();
+        const ifr = url.match(/src=["']([^"']+)["']/i);
+        if (ifr) url = ifr[1];
+        if (url.includes('video_ext.php')) {
+          const oid = (url.match(/oid=(-?\d+)/) || [])[1];
+          const id = (url.match(/id=(\d+)/) || [])[1];
+          const hash = (url.match(/hash=([a-zA-Z0-9]+)/) || [])[1];
+          if (oid && id) return { oid, id, hash };
+        }
+        const vm = url.match(/\/video(-?\d+)_(\d+)/);
+        if (vm) return { oid: vm[1], id: vm[2] };
+        const dm = url.match(/^(-?\d+)_(\d+)$/);
+        return dm ? { oid: dm[1], id: dm[2] } : null;
+      }
+
+      function parseAnyVideo(url, defaultPlatform) {
+        if (url.includes('vk.com') || url.includes('vkvideo.ru') || defaultPlatform === 'vk') {
+          const vk = extractVkInfo(url);
+          if (vk) return { platform: 'vk', id: `${vk.oid}_${vk.id}`, oid: vk.oid, vkId: vk.id, hash: vk.hash };
+        }
+        const yt = extractYtId(url);
+        if (yt) return { platform: 'youtube', id: yt };
+        return null;
+      }
+
+      // 6. PEERJS WEBRTC SYNCHRONIZATION
+      let peer = null;
+      let connections = [];
+      let activeConnection = null;
+      let isHost = false;
+      let currentRoomCode = '';
+      let currentPlatform = 'youtube';
+      let currentVideoId = 'dQw4w9WgXcQ';
+      let vkOid = '-22822305';
+      let vkId = '456241984';
+      let vkHash = '';
+      let isIncomingSync = false;
+      let ytPlayer = null;
+      let sessionSeconds = 0;
+      let sessionInterval = null;
+
+      function cleanupConnections() {
+        connections.forEach(c => { try { c.close(); } catch(e){} });
+        connections = [];
+        if (activeConnection) { try { activeConnection.close(); } catch(e){} activeConnection = null; }
+        if (peer) { try { peer.destroy(); } catch(e){} peer = null; }
+        isHost = false;
+        currentRoomCode = '';
+      }
+
+      function generateCode() {
+        const c = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+        let res = '';
+        for (let i = 0; i < 6; i++) res += c.charAt(Math.floor(Math.random() * c.length));
+        return res;
+      }
+
+      function broadcast(packet, excludeConn) {
+        if (isHost) {
+          connections.forEach(c => { if (c.open && c !== excludeConn) c.send(packet); });
+        } else if (activeConnection && activeConnection.open) {
+          activeConnection.send(packet);
+        }
+      }
+
+      function handlePacket(pkt, srcConn) {
+        if (!pkt || !pkt.type) return;
+        switch (pkt.type) {
+          case 'INITIAL_STATE':
+            if (!isHost) {
+              setPlatformAndVideo(pkt.payload.platform, pkt.payload.videoId, pkt.payload.vkOid, pkt.payload.vkId, pkt.payload.vkHash);
+              if (pkt.payload.isPlaying) {
+                setTimeout(() => doSyncAction('play', pkt.payload.time), 500);
+              }
+              showToast('Синхронизировано с организатором', 'success');
+            }
+            break;
+          case 'CHAT_MESSAGE':
+            appendChatMessage(pkt.payload.sender, pkt.payload.avatar, pkt.payload.text, pkt.payload.timestamp, false, pkt.payload.isHost);
+            if (isHost) broadcast(pkt, srcConn);
+            break;
+          case 'EMOJI_REACTION':
+            spawnFloatingEmoji(pkt.payload.emoji);
+            if (isHost) broadcast(pkt, srcConn);
+            break;
+          case 'VIDEO_LOAD':
+            setPlatformAndVideo(pkt.payload.platform, pkt.payload.videoId, pkt.payload.vkOid, pkt.payload.vkId, pkt.payload.vkHash);
+            showToast(`${pkt.payload.sender} загрузил видео`, 'info');
+            if (isHost) broadcast(pkt, srcConn);
+            break;
+          case 'VIDEO_SYNC':
+            doSyncAction(pkt.payload.action, pkt.payload.time);
+            if (isHost) broadcast(pkt, srcConn);
+            break;
+          case 'PROFILE_UPDATE':
+            if (srcConn) { srcConn.username = pkt.payload.newNick; srcConn.avatar = pkt.payload.avatar; }
+            if (isHost) broadcast(pkt, srcConn);
+            break;
+        }
+      }
+
+      function doSyncAction(action, time) {
+        isIncomingSync = true;
+        if (currentPlatform === 'youtube' && ytPlayer && typeof ytPlayer.seekTo === 'function') {
+          ytPlayer.seekTo(time, true);
+          if (action === 'play') ytPlayer.playVideo();
+          else if (action === 'pause') ytPlayer.pauseVideo();
+        } else if (currentPlatform === 'vk') {
+          const ifr = document.getElementById('vk-iframe');
+          if (ifr && ifr.contentWindow) {
+            ifr.contentWindow.postMessage(JSON.stringify({ method: action, time: time }), '*');
+          }
+        }
+        setTimeout(() => { isIncomingSync = false; }, 800);
+      }
+
+      function sendVkSync(action, time = 0) {
+        const ifr = document.getElementById('vk-iframe');
+        if (ifr && ifr.contentWindow) {
+          ifr.contentWindow.postMessage(JSON.stringify({ method: action, time: time }), '*');
+        }
+        broadcast({ type: 'VIDEO_SYNC', payload: { action, time, sender: currentUser.nickname } });
+      }
+
+      // 7. ROOM NAVIGATION & TIMERS
+      function showMainMenu() {
+        document.getElementById('room-view').classList.add('hidden');
+        document.getElementById('main-menu').classList.remove('hidden');
+        if (sessionInterval) { clearInterval(sessionInterval); sessionInterval = null; }
+        cleanupConnections();
+      }
+
+      function showRoomView(code) {
+        currentRoomCode = code;
+        document.getElementById('badge-code-val').textContent = code;
+        document.getElementById('main-menu').classList.add('hidden');
+        document.getElementById('room-view').classList.remove('hidden');
+
+        // Reset chat
+        document.getElementById('chat-messages').innerHTML = '';
+        appendChatMessage('Система', '', `Добро пожаловать в комнату! Вы вошли как: ${currentUser.nickname}`, Date.now(), false);
+
+        // Start room watch time counter
+        sessionSeconds = 0;
+        if (sessionInterval) clearInterval(sessionInterval);
+        sessionInterval = setInterval(() => {
+          sessionSeconds++;
+          const mins = String(Math.floor(sessionSeconds / 60)).padStart(2, '0');
+          const secs = String(sessionSeconds % 60).padStart(2, '0');
+          document.getElementById('session-timer-text').textContent = `${mins}:${secs}`;
+
+          // Accumulate stats for active user
+          if (currentPlatform === 'youtube') {
+            currentUser.stats.youtubeTimeSeconds = (currentUser.stats.youtubeTimeSeconds || 0) + 1;
+          } else {
+            currentUser.stats.vkTimeSeconds = (currentUser.stats.vkTimeSeconds || 0) + 1;
+          }
+          saveActiveUser(currentUser);
+        }, 1000);
+      }
+
+      function updateOnlineCount() {
+        const count = isHost ? (connections.length + 1) : 2;
+        document.getElementById('online-counter').textContent = `${count} онлайн`;
+      }
+
+      function setPlatformAndVideo(platform, vId, oid, id, hash) {
+        currentPlatform = platform;
+        currentVideoId = vId;
+        document.getElementById('room-platform-badge').textContent = platform === 'vk' ? 'VK Видео' : 'YouTube';
+        document.getElementById('room-platform-badge').style.color = platform === 'vk' ? '#93c5fd' : '#fca5a5';
+
+        const ytTarget = document.getElementById('player');
+        const vkIfr = document.getElementById('vk-iframe');
+        const vkTool = document.getElementById('vk-toolbar');
+
+        if (platform === 'youtube') {
+          vkIfr.classList.add('hidden');
+          vkTool.classList.add('hidden');
+          ytTarget.classList.remove('hidden');
+          if (ytPlayer && typeof ytPlayer.loadVideoById === 'function') {
+            isIncomingSync = true;
+            ytPlayer.loadVideoById(vId, 0);
+            setTimeout(() => { isIncomingSync = false; }, 800);
+          }
+        } else {
+          ytTarget.classList.add('hidden');
+          vkIfr.classList.remove('hidden');
+          vkTool.classList.remove('hidden');
+          if (ytPlayer && typeof ytPlayer.pauseVideo === 'function') ytPlayer.pauseVideo();
+
+          vkOid = oid || '-22822305';
+          vkId = id || '456241984';
+          vkHash = hash || '';
+          let vkUrl = `https://vk.com/video_ext.php?oid=${vkOid}&id=${vkId}&hd=2&autoplay=0&js_api=1`;
+          if (vkHash) vkUrl += `&hash=${vkHash}`;
+          vkIfr.src = vkUrl;
+        }
+      }
+
+      // Actions
+      function createRoom(platform) {
+        cleanupConnections();
+        isHost = true;
+        currentPlatform = platform;
+        const code = generateCode();
+
+        currentUser.stats.sessionsCount = (currentUser.stats.sessionsCount || 0) + 1;
+        saveActiveUser(currentUser);
+
+        peer = new Peer('ravereh-' + code);
+        peer.on('open', () => {
+          showToast(`Комната создана: ${code}`, 'success');
+          copyRoomCode(code);
+          showRoomView(code);
+          if (platform === 'vk') setPlatformAndVideo('vk', '-22822305_456241984', '-22822305', '456241984');
+          else setPlatformAndVideo('youtube', 'dQw4w9WgXcQ');
+
+          peer.on('connection', conn => {
+            conn.username = conn.metadata?.nickname || 'Зритель';
+            conn.avatar = conn.metadata?.avatar || '';
+            connections.push(conn);
+            updateOnlineCount();
+
+            conn.on('open', () => {
+              showToast(`${conn.username} присоединился`, 'info');
+              conn.send({
+                type: 'INITIAL_STATE',
+                payload: {
+                  platform: currentPlatform,
+                  videoId: currentVideoId,
+                  vkOid: vkOid,
+                  vkId: vkId,
+                  vkHash: vkHash,
+                  isPlaying: false,
+                  time: 0
+                }
+              });
+            });
+
+            conn.on('data', data => handlePacket(data, conn));
+            conn.on('close', () => {
+              connections = connections.filter(c => c !== conn);
+              updateOnlineCount();
+              showToast(`${conn.username} вышел`, 'info');
+            });
+          });
+        });
+
+        peer.on('error', err => {
+          showToast('Ошибка Peer: ' + err.message, 'error');
+        });
+      }
+
+      function joinRoom() {
+        const code = document.getElementById('join-code-input').value.trim().toUpperCase();
+        if (!code) { showToast('Введите код комнаты', 'error'); return; }
+        cleanupConnections();
+        isHost = false;
+
+        peer = new Peer();
+        peer.on('open', () => {
+          const conn = peer.connect('ravereh-' + code, {
+            metadata: { nickname: currentUser.nickname, avatar: currentUser.avatar }
+          });
+          activeConnection = conn;
+          conn.on('open', () => {
+            currentUser.stats.sessionsCount = (currentUser.stats.sessionsCount || 0) + 1;
+            saveActiveUser(currentUser);
+            showToast(`Подключено к ${code}!`, 'success');
+            showRoomView(code);
+            conn.on('data', data => handlePacket(data, conn));
+            conn.on('close', () => { showToast('Комната закрыта организатором', 'info'); showMainMenu(); });
+          });
+        });
+        peer.on('error', err => {
+          showToast(err.type === 'peer-unavailable' ? 'Комната не найдена' : 'Ошибка соединения', 'error');
+        });
+      }
+
+      function quickLaunch(plat, vId) {
+        createRoom(plat);
+        setTimeout(() => {
+          if (plat === 'youtube') setPlatformAndVideo('youtube', vId);
+          else {
+            const p = vId.split('_');
+            setPlatformAndVideo('vk', vId, p[0], p[1]);
+          }
+        }, 600);
+      }
+
+      function leaveRoom() { showMainMenu(); showToast('Вы вышли из комнаты', 'info'); }
+
+      function handleLoadVideoInput() {
+        const val = document.getElementById('video-url-input').value.trim();
+        if (!val) return;
+        const res = parseAnyVideo(val, currentPlatform);
+        if (!res) { showToast('Не удалось распознать ссылку', 'error'); return; }
+        setPlatformAndVideo(res.platform, res.id, res.oid, res.vkId, res.hash);
+        document.getElementById('video-url-input').value = '';
+        showToast('Видео загружено!', 'success');
+        broadcast({
+          type: 'VIDEO_LOAD',
+          payload: { platform: res.platform, videoId: res.id, vkOid: res.oid, vkId: res.vkId, vkHash: res.hash, sender: currentUser.nickname }
+        });
+      }
+
+      // 8. CHAT & EMOJIS
+      function appendChatMessage(sender, avatar, text, timestamp, isSelf, msgIsHost) {
+        const c = document.getElementById('chat-messages');
+        const item = document.createElement('div');
+        item.className = `msg-item ${isSelf ? 'self' : 'other'}`;
+
+        const av = document.createElement('div');
+        av.className = 'msg-avatar';
+        if (avatar) av.style.backgroundImage = `url('${avatar}')`;
+        else {
+          av.style.background = getColorsForString(sender);
+          av.textContent = sender.charAt(0).toUpperCase();
+        }
+        if (msgIsHost) {
+          av.innerHTML += `<svg class="msg-crown" viewBox="0 0 24 24"><path d="M5 16L3 5L8.5 10L12 4L15.5 10L21 5L19 16H5Z"/></svg>`;
+        }
+
+        const b = document.createElement('div');
+        b.className = 'msg-body';
+        const d = new Date(timestamp);
+        const timeStr = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+        b.innerHTML = `
+          <div class="msg-meta">${isSelf ? 'Вы' : sender} • ${timeStr}</div>
+          <div class="msg-text">${text}</div>
+        `;
+
+        item.appendChild(av);
+        item.appendChild(b);
+        c.appendChild(item);
+        c.scrollTop = c.scrollHeight;
+      }
+
+      function handleSendChat(e) {
+        e.preventDefault();
+        const inp = document.getElementById('chat-text-input');
+        const text = inp.value.trim();
+        if (!text) return;
+        inp.value = '';
+
+        currentUser.stats.messagesCount = (currentUser.stats.messagesCount || 0) + 1;
+        saveActiveUser(currentUser);
+
+        const now = Date.now();
+        appendChatMessage(currentUser.nickname, currentUser.avatar, text, now, true, isHost);
+        broadcast({
+          type: 'CHAT_MESSAGE',
+          payload: { sender: currentUser.nickname, avatar: currentUser.avatar, text, timestamp: now, isHost }
+        });
+      }
+
+      function spawnFloatingEmoji(emoji) {
+        const stage = document.getElementById('video-stage-box');
+        const el = document.createElement('div');
+        el.className = 'flying-emoji';
+        el.textContent = emoji;
+        el.style.left = (Math.floor(Math.random() * 60) + 20) + '%';
+        stage.appendChild(el);
+        setTimeout(() => el.remove(), 2300);
+      }
+
+      function sendReaction(emoji) {
+        spawnFloatingEmoji(emoji);
+        currentUser.stats.reactionsCount = (currentUser.stats.reactionsCount || 0) + 1;
+        saveActiveUser(currentUser);
+        broadcast({ type: 'EMOJI_REACTION', payload: { emoji, sender: currentUser.nickname } });
+      }
+
+      // 9. YOUTUBE IFRAME API
+      const tag = document.createElement('script');
+      tag.src = "https://www.youtube.com/iframe_api";
+      document.head.appendChild(tag);
+
+      window.onYouTubeIframeAPIReady = function() {
+        ytPlayer = new YT.Player('player', {
+          height: '100%',
+          width: '100%',
+          videoId: currentVideoId,
+          playerVars: { autoplay: 0, rel: 0, playsinline: 1 },
+          events: {
+            onStateChange: function(e) {
+              if (isIncomingSync) return;
+              const time = ytPlayer.getCurrentTime();
+              if (e.data === YT.PlayerState.PLAYING) {
+                broadcast({ type: 'VIDEO_SYNC', payload: { action: 'play', time, sender: currentUser.nickname } });
+              } else if (e.data === YT.PlayerState.PAUSED) {
+                broadcast({ type: 'VIDEO_SYNC', payload: { action: 'pause', time, sender: currentUser.nickname } });
+              }
+            }
+          }
+        });
+      };
+
+      // INITIALIZE APP
+      loadCurrentUser();
+      updateHeaderAndMenuProfile();
+    </script>
   </body>
 </html>
-
