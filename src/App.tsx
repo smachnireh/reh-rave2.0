@@ -171,7 +171,27 @@ export default function App() {
     };
   }, [currentView, roomPlatform, currentUser.id]);
 
-  // Clean peer connections
+  // Resilient PeerJS Options with Google, Cloudflare, and Twilio STUN servers
+  const PEER_OPTIONS = {
+    host: '0.peerjs.com',
+    port: 443,
+    path: '/',
+    secure: true,
+    pingInterval: 5000,
+    debug: 1,
+    config: {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun.cloudflare.com:3478' },
+        { urls: 'stun:global.stun.twilio.com:3478' },
+      ],
+      iceCandidatePoolSize: 10,
+    },
+  };
+
+  // Clean peer connections without triggering event callbacks on dying peer
   const cleanupConnections = () => {
     connectionsRef.current.forEach((conn) => {
       try {
@@ -189,6 +209,7 @@ export default function App() {
 
     if (peerRef.current) {
       try {
+        peerRef.current.removeAllListeners();
         peerRef.current.destroy();
       } catch {}
       peerRef.current = null;
@@ -324,31 +345,43 @@ export default function App() {
     return res;
   };
 
-  // 1. Action: Create Room
-  const handleCreateRoom = (platform: VideoPlatform) => {
+  // 1. Action: Create Room with automatic retry and reconnection resilience
+  const handleCreateRoom = (platform: VideoPlatform, customCode?: string, retryCount = 0) => {
     cleanupConnections();
     setRoomPlatform(platform);
 
-    const code = generateCode();
+    const code = customCode || generateCode();
     setRoomCode(code);
     setIsHost(true);
     setCreatedBoxCode(code);
 
-    const peer = new Peer('ravereh-' + code);
-    peerRef.current = peer;
+    try {
+      const peer = new Peer('ravereh-' + code, PEER_OPTIONS);
+      peerRef.current = peer;
 
-    peer.on('open', () => {
-      showToast(`Комната создана! Код: ${code}`, 'success');
-      copyRoomCode(code);
-      setCurrentView('room');
-      setOnlineCount(1);
-      incrementStat(currentUser.id, 'sessionsCount', 1);
+      peer.on('open', () => {
+        showToast(`Комната создана! Код: ${code}`, 'success');
+        copyRoomCode(code);
+        setCurrentView('room');
+        setOnlineCount(1);
+        incrementStat(currentUser.id, 'sessionsCount', 1);
 
-      // Start with empty video so user can choose cleanly
-      setCurrentVideoId('');
-      setVkOid('');
-      setVkId('');
-      setVkHash(undefined);
+        // Start with empty video so user can choose cleanly
+        setCurrentVideoId('');
+        setVkOid('');
+        setVkId('');
+        setVkHash(undefined);
+      });
+
+      // Handle broker signaling disconnect without dropping session
+      peer.on('disconnected', () => {
+        console.warn('Host peer disconnected from signaling broker. Auto-reconnecting...');
+        if (peerRef.current && !peerRef.current.destroyed) {
+          try {
+            peerRef.current.reconnect();
+          } catch {}
+        }
+      });
 
       peer.on('connection', (conn) => {
         // @ts-ignore
@@ -387,19 +420,47 @@ export default function App() {
           showToast(`${(conn as any).username} вышел из комнаты`, 'info');
         });
       });
-    });
 
-    peer.on('error', (err) => {
-      console.error(err);
-      if (err.type === 'unavailable-id') {
-        showToast('Код комнаты уже занят, повторите попытку', 'error');
-      } else {
-        showToast('Ошибка подключения к сети PeerJS', 'error');
-      }
-    });
+      peer.on('error', (err: any) => {
+        console.warn('Host peer error event:', err);
+        const errMsg = err?.message || String(err || '');
+
+        // If ID is already taken on broker, auto-retry with fresh code
+        if (err.type === 'unavailable-id') {
+          if (retryCount < 3) {
+            const nextCode = generateCode();
+            handleCreateRoom(platform, nextCode, retryCount + 1);
+            return;
+          }
+          showToast('Код комнаты занят, попробуйте еще раз', 'error');
+          return;
+        }
+
+        // Ignore harmless background broker reconnect pings
+        if (
+          err.type === 'disconnected' ||
+          err.type === 'server-error' ||
+          err.type === 'socket-error' ||
+          err.type === 'socket-closed' ||
+          errMsg.includes('Lost connection')
+        ) {
+          if (peerRef.current && !peerRef.current.destroyed) {
+            try {
+              peerRef.current.reconnect();
+            } catch {}
+          }
+          return;
+        }
+
+        showToast('Связь PeerJS: ' + errMsg, 'error');
+      });
+    } catch (e: any) {
+      console.error('Fatal create room error:', e);
+      showToast('Ошибка создания комнаты: ' + (e?.message || ''), 'error');
+    }
   };
 
-  // 2. Action: Join Room
+  // 2. Action: Join Room with resilient fallback
   const handleJoinRoom = () => {
     const code = joinCodeInput.trim().toUpperCase();
     if (!code) {
@@ -411,50 +472,93 @@ export default function App() {
     setIsHost(false);
     setRoomCode(code);
 
-    const peer = new Peer();
-    peerRef.current = peer;
+    try {
+      const peer = new Peer(PEER_OPTIONS);
+      peerRef.current = peer;
 
-    const timeout = setTimeout(() => {
-      showToast('Превышено время ожидания комнаты', 'error');
-    }, 10000);
+      let hasConnected = false;
+      const timeout = setTimeout(() => {
+        if (!hasConnected) {
+          showToast('Превышено время ожидания ответа комнаты', 'error');
+        }
+      }, 12000);
 
-    peer.on('open', () => {
-      const conn = peer.connect('ravereh-' + code, {
-        metadata: {
-          nickname: currentUser.nickname,
-          avatar: currentUser.avatar,
-        },
+      peer.on('open', () => {
+        const conn = peer.connect('ravereh-' + code, {
+          metadata: {
+            nickname: currentUser.nickname,
+            avatar: currentUser.avatar,
+          },
+        });
+        activeConnRef.current = conn;
+
+        conn.on('open', () => {
+          hasConnected = true;
+          clearTimeout(timeout);
+          showToast(`Вы присоединились к комнате ${code}!`, 'success');
+          setCurrentView('room');
+          setOnlineCount(2);
+          incrementStat(currentUser.id, 'sessionsCount', 1);
+
+          conn.on('data', (data: any) => {
+            handleIncomingPacket(data, conn);
+          });
+
+          conn.on('close', () => {
+            showToast('Организатор закрыл комнату', 'info');
+            setCurrentView('menu');
+            cleanupConnections();
+          });
+        });
+
+        conn.on('error', (err) => {
+          console.warn('Guest connection error:', err);
+        });
       });
-      activeConnRef.current = conn;
 
-      conn.on('open', () => {
+      peer.on('disconnected', () => {
+        if (peerRef.current && !peerRef.current.destroyed) {
+          try {
+            peerRef.current.reconnect();
+          } catch {}
+        }
+      });
+
+      peer.on('error', (err: any) => {
         clearTimeout(timeout);
-        showToast(`Вы присоединились к комнате ${code}!`, 'success');
-        setCurrentView('room');
-        setOnlineCount(2);
-        incrementStat(currentUser.id, 'sessionsCount', 1);
+        console.warn('Guest peer error:', err);
+        const errMsg = err?.message || String(err || '');
 
-        conn.on('data', (data: any) => {
-          handleIncomingPacket(data, conn);
-        });
+        if (err.type === 'peer-unavailable') {
+          showToast('Комната с таким кодом не найдена', 'error');
+          return;
+        }
 
-        conn.on('close', () => {
-          showToast('Организатор закрыл комнату', 'info');
-          setCurrentView('menu');
-          cleanupConnections();
-        });
+        // If data channel is already working directly, ignore broker disconnect
+        if (
+          err.type === 'disconnected' ||
+          err.type === 'server-error' ||
+          err.type === 'socket-error' ||
+          err.type === 'socket-closed' ||
+          errMsg.includes('Lost connection')
+        ) {
+          if (activeConnRef.current && activeConnRef.current.open) {
+            return;
+          }
+          if (peerRef.current && !peerRef.current.destroyed) {
+            try {
+              peerRef.current.reconnect();
+            } catch {}
+          }
+          return;
+        }
+
+        showToast('Не удалось подключиться: ' + errMsg, 'error');
       });
-    });
-
-    peer.on('error', (err) => {
-      clearTimeout(timeout);
-      console.error(err);
-      if (err.type === 'peer-unavailable') {
-        showToast('Комната с таким кодом не найдена', 'error');
-      } else {
-        showToast('Не удалось подключиться: ' + err.message, 'error');
-      }
-    });
+    } catch (e: any) {
+      console.error('Fatal join room error:', e);
+      showToast('Ошибка подключения к комнате', 'error');
+    }
   };
 
   // Leave room
@@ -544,7 +648,7 @@ export default function App() {
   const totalWatchTime = (currentUser.stats.youtubeTimeSeconds || 0) + (currentUser.stats.vkTimeSeconds || 0);
 
   return (
-    <div className={`flex flex-col bg-[#0a0a0a] text-[#e0e0e0] font-sans relative selection:bg-white/20 ${currentView === 'room' ? 'h-screen lg:overflow-hidden overflow-y-auto' : 'min-h-screen'}`}>
+    <div className={`flex flex-col bg-[#0a0a0a] text-[#e0e0e0] font-sans relative selection:bg-white/20 ${currentView === 'room' ? 'room-page-layout' : 'min-h-screen'}`}>
       {/* Dynamic Ambient Background Glow Orbs */}
       <div
         className="fixed -top-32 -right-32 w-[600px] h-[600px] rounded-full blur-[140px] pointer-events-none opacity-20 transition-all duration-1000 z-0"
