@@ -29,10 +29,14 @@
 }
 
 @media (min-width: 1024px) {
-  html, body {
+  body:not(.mode-mobile) {
     overflow: hidden !important;
     height: 100vh !important;
   }
+}
+
+body.mode-desktop,
+body:not(.mode-mobile) {
   .room-page-layout {
     height: 100vh !important;
     max-height: 100vh !important;
@@ -88,7 +92,7 @@
   }
 }
 
-@media (max-width: 1023px) {
+body.mode-mobile {
   .room-page-layout {
     min-height: 100vh;
     overflow-y: auto;
@@ -110,6 +114,7 @@
   }
   .video-stage {
     min-height: 240px;
+    aspect-ratio: 16 / 9;
     position: relative;
     border-radius: 12px;
     overflow: hidden;
@@ -118,7 +123,6 @@
     height: 480px !important;
     min-height: 480px !important;
     max-height: 480px !important;
-  }
 }
 
 /* 2. Оформление «окна»: стили .sidebar-area */

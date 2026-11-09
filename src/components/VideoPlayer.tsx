@@ -263,91 +263,17 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       {/* Video Viewport OR Empty State Poster */}
       <div className="w-full h-full relative" ref={containerRef}>
         {!videoId ? (
-          /* PLEASANT EMPTY STATE POSTER CARD */
-          <div className="w-full h-full flex flex-col items-center justify-center text-center p-6 bg-gradient-to-br from-neutral-950 via-[#0d0d0d] to-neutral-900 relative overflow-hidden select-none">
-            {/* Glowing orb accent */}
-            <div
-              className={`absolute w-72 h-72 rounded-full blur-[90px] opacity-20 pointer-events-none ${
-                platform === 'youtube' ? 'bg-red-500' : 'bg-blue-500'
-              }`}
-            />
-
-            <div className="relative z-10 max-w-md flex flex-col items-center">
-              <div
-                className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-3.5 shadow-2xl border ${
-                  platform === 'youtube'
-                    ? 'bg-red-600/15 border-red-500/30 text-red-500'
-                    : 'bg-blue-600/15 border-blue-500/30 text-blue-400'
-                }`}
-              >
-                {platform === 'youtube' ? <PlayCircle className="w-8 h-8" /> : <Tv className="w-8 h-8" />}
-              </div>
-
-              <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight mb-1.5">
-                {platform === 'youtube' ? 'Комната YouTube создана!' : 'Комната VK Видео создана!'}
-              </h2>
-
-              <p className="text-xs sm:text-sm text-neutral-400 mb-6 max-w-sm leading-relaxed">
-                Вставьте ссылку на видео или Shorts в поле ниже, либо запустите любой готовый вариант в один клик:
-              </p>
-
-              {/* Clickable Quick Presets */}
-              <div className="grid grid-cols-2 gap-2.5 w-full max-w-xs">
-                {platform === 'youtube' ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => onSelectPreset?.('https://www.youtube.com/watch?v=jfKfPfyJRdk')}
-                      className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-left transition-all hover:scale-102 cursor-pointer group"
-                    >
-                      <div className="flex items-center gap-1.5 text-xs font-semibold text-white group-hover:text-amber-300">
-                        <Music className="w-3.5 h-3.5 text-red-400" />
-                        <span>Lofi Beats</span>
-                      </div>
-                      <div className="text-[10px] text-neutral-400 mt-0.5">Фоновая музыка</div>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => onSelectPreset?.('https://www.youtube.com/watch?v=4xDzrJKXOOY')}
-                      className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-left transition-all hover:scale-102 cursor-pointer group"
-                    >
-                      <div className="flex items-center gap-1.5 text-xs font-semibold text-white group-hover:text-amber-300">
-                        <Sparkles className="w-3.5 h-3.5 text-purple-400" />
-                        <span>Synthwave</span>
-                      </div>
-                      <div className="text-[10px] text-neutral-400 mt-0.5">Ретро чиллаут</div>
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => onSelectPreset?.('https://vk.com/video-22822305_456241984')}
-                      className="p-2.5 rounded-xl bg-blue-950/30 hover:bg-blue-900/40 border border-blue-500/20 text-left transition-all hover:scale-102 cursor-pointer group"
-                    >
-                      <div className="flex items-center gap-1.5 text-xs font-semibold text-white group-hover:text-blue-300">
-                        <Film className="w-3.5 h-3.5 text-blue-400" />
-                        <span>VK Шоу</span>
-                      </div>
-                      <div className="text-[10px] text-neutral-400 mt-0.5">Шоу & Трейлеры</div>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => onSelectPreset?.('https://vk.com/video-28363549_456239106')}
-                      className="p-2.5 rounded-xl bg-blue-950/30 hover:bg-blue-900/40 border border-blue-500/20 text-left transition-all hover:scale-102 cursor-pointer group"
-                    >
-                      <div className="flex items-center gap-1.5 text-xs font-semibold text-white group-hover:text-blue-300">
-                        <Music className="w-3.5 h-3.5 text-blue-400" />
-                        <span>VK Клип</span>
-                      </div>
-                      <div className="text-[10px] text-neutral-400 mt-0.5">Популярный клип</div>
-                    </button>
-                  </>
-                )}
-              </div>
+          /* SIMPLE UNSLOP PLAQUE */
+          <div className="w-full h-full flex flex-col items-center justify-center text-center p-6 bg-[#0f0f0f] select-none">
+            <div className="w-12 h-12 rounded-lg bg-[#181818] border border-white/10 text-neutral-400 flex items-center justify-center mb-3">
+              <Film className="w-6 h-6 stroke-[1.5]" />
             </div>
+            <h2 className="text-base font-semibold text-white tracking-tight mb-1">
+              Выберите видео и вставьте ссылку ниже
+            </h2>
+            <p className="text-xs text-neutral-400 max-w-xs">
+              Поддерживаются ссылки на YouTube, Shorts и ролики VK Видео
+            </p>
           </div>
         ) : platform === 'youtube' ? (
           <div id="yt-player-target" className="w-full h-full" />

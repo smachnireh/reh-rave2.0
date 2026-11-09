@@ -63,6 +63,27 @@ export default function App() {
   const [joinCodeInput, setJoinCodeInput] = useState<string>('');
   const [createdBoxCode, setCreatedBoxCode] = useState<string | null>(null);
 
+  // Device mode: 'desktop' | 'mobile'
+  const [deviceMode, setDeviceMode] = useState<'desktop' | 'mobile'>(() => {
+    const saved = localStorage.getItem('ravereh_device_mode');
+    if (saved === 'desktop' || saved === 'mobile') return saved;
+    return (typeof window !== 'undefined' && (window.innerWidth <= 1024 || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent))) ? 'mobile' : 'desktop';
+  });
+
+  const toggleDeviceMode = (mode: 'desktop' | 'mobile') => {
+    setDeviceMode(mode);
+    localStorage.setItem('ravereh_device_mode', mode);
+    if (typeof document !== 'undefined') {
+      document.body.classList.remove('mode-desktop', 'mode-mobile');
+      document.body.classList.add(mode === 'mobile' ? 'mode-mobile' : 'mode-desktop');
+    }
+  };
+
+  useEffect(() => {
+    document.body.classList.remove('mode-desktop', 'mode-mobile');
+    document.body.classList.add(deviceMode === 'mobile' ? 'mode-mobile' : 'mode-desktop');
+  }, [deviceMode]);
+
   // Video State (starts empty, without automatic Rickroll or VK clip)
   const [currentVideoId, setCurrentVideoId] = useState<string>('');
   const [vkOid, setVkOid] = useState<string>('');
@@ -648,16 +669,7 @@ export default function App() {
   const totalWatchTime = (currentUser.stats.youtubeTimeSeconds || 0) + (currentUser.stats.vkTimeSeconds || 0);
 
   return (
-    <div className={`flex flex-col bg-[#0a0a0a] text-[#e0e0e0] font-sans relative selection:bg-white/20 ${currentView === 'room' ? 'room-page-layout' : 'min-h-screen'}`}>
-      {/* Dynamic Ambient Background Glow Orbs */}
-      <div
-        className="fixed -top-32 -right-32 w-[600px] h-[600px] rounded-full blur-[140px] pointer-events-none opacity-20 transition-all duration-1000 z-0"
-        style={{ background: ambientPalettes[ambientIdx].orb1 }}
-      />
-      <div
-        className="fixed -bottom-32 -left-32 w-[600px] h-[600px] rounded-full blur-[140px] pointer-events-none opacity-15 transition-all duration-1000 z-0"
-        style={{ background: ambientPalettes[ambientIdx].orb2 }}
-      />
+    <div className={`flex flex-col bg-[#0a0a0a] text-[#e0e0e0] font-sans relative selection:bg-white/20 ${currentView === 'room' ? (deviceMode === 'desktop' ? 'room-page-layout' : 'min-h-screen') : 'min-h-screen'}`}>
 
       {/* Toast Notifications */}
       <div className="fixed top-5 right-5 z-50 flex flex-col gap-2 pointer-events-none">
@@ -706,6 +718,28 @@ export default function App() {
               <span>VK: {formatDurationRu(currentUser.stats.vkTimeSeconds || 0)}</span>
             </button>
           </div>
+        </div>
+
+        {/* Device Mode Switcher (ПК / Телефон) */}
+        <div className="flex items-center bg-neutral-900 border border-white/10 rounded-lg p-0.5 text-xs">
+          <button
+            onClick={() => toggleDeviceMode('desktop')}
+            className={`px-2.5 py-1 rounded font-medium transition-colors cursor-pointer ${
+              deviceMode === 'desktop' ? 'bg-neutral-800 text-white font-semibold' : 'text-neutral-400 hover:text-neutral-200'
+            }`}
+            title="Режим для ПК и ноутбуков"
+          >
+            ПК
+          </button>
+          <button
+            onClick={() => toggleDeviceMode('mobile')}
+            className={`px-2.5 py-1 rounded font-medium transition-colors cursor-pointer ${
+              deviceMode === 'mobile' ? 'bg-neutral-800 text-white font-semibold' : 'text-neutral-400 hover:text-neutral-200'
+            }`}
+            title="Режим для мобильных телефонов"
+          >
+            Телефон
+          </button>
         </div>
 
         {/* User Profile Action & Auth Button */}
